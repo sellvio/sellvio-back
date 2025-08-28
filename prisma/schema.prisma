@@ -1,0 +1,359 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------
+// Enums
+// ----------------------------------------------------
+
+enum UserRole {
+  ADMIN
+  BUSINESS
+  CREATOR
+}
+
+enum CreatorType {
+  INFLUENCER
+  EXPERIENCED
+  BEGINNER
+  CLIPPER
+}
+
+enum Platform {
+  TIKTOK
+  INSTAGRAM
+  FACEBOOK
+  YOUTUBE
+}
+
+enum ChatType {
+  PUBLIC
+  PRIVATE
+}
+
+enum OfferType {
+  CPV // Cost Per View
+  CPR // Cost Per Reach
+  CPE // Cost Per Engagement
+  CPC // Cost Per Click
+}
+
+enum MembershipStatus {
+  PENDING
+  JOINED
+  REJECTED
+}
+
+enum SubmissionStatus {
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum ChannelKind {
+  GENERAL
+  FEEDBACK // video submissions / feedback
+  ANNOUNCEMENTS
+  REQUIREMENTS
+  BRAND_ASSETS
+  RULES
+}
+
+// ----------------------------------------------------
+// Core Users & Profiles
+// ----------------------------------------------------
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  role         UserRole
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  creatorProfile  CreatorProfile?
+  businessProfile BusinessProfile?
+  ChatMessage     ChatMessage[]
+}
+
+model CreatorProfile {
+  id            String       @id @default(cuid())
+  userId        String       @unique
+  user          User         @relation(fields: [userId], references: [id])
+  type          CreatorType?
+  firstName     String?
+  lastName      String?
+  nickname      String?
+  birthday      DateTime?
+  bio           String?
+  totalEarnings Decimal      @default(0)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  socialLinks SocialLink[]
+  memberships CampaignMembership[]
+  submissions VideoSubmission[]
+  posts       CreatorPost[]
+  earnings    EarningsAccrual[]
+  tags        CreatorTag[]
+}
+
+model BusinessProfile {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id])
+  legalName     String
+  legalStatus   String?
+  websiteUrl    String?
+  logoUrl       String?
+  contactPhone  String?
+  contactEmail  String?
+  nickname      String?
+  totalInvested Decimal  @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  campaigns   Campaign[]
+  socialLinks SocialLink[]
+  tags        BusinessTag[]
+}
+
+// ----------------------------------------------------
+// Taxonomy
+// ----------------------------------------------------
+
+model Tag {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  creators   CreatorTag[]
+  businesses BusinessTag[]
+  campaigns  CampaignTag[]
+}
+
+model CreatorTag {
+  creatorId String
+  tagId     String
+  creator   CreatorProfile @relation(fields: [creatorId], references: [id])
+  tag       Tag            @relation(fields: [tagId], references: [id])
+
+  @@id([creatorId, tagId])
+}
+
+model BusinessTag {
+  businessId String
+  tagId      String
+  business   BusinessProfile @relation(fields: [businessId], references: [id])
+  tag        Tag             @relation(fields: [tagId], references: [id])
+
+  @@id([businessId, tagId])
+}
+
+model CampaignTag {
+  campaignId String
+  tagId      String
+  campaign   Campaign @relation(fields: [campaignId], references: [id])
+  tag        Tag      @relation(fields: [tagId], references: [id])
+
+  @@id([campaignId, tagId])
+}
+
+// ----------------------------------------------------
+// Campaigns
+// ----------------------------------------------------
+
+model Campaign {
+  id         String          @id @default(cuid())
+  businessId String
+  business   BusinessProfile @relation(fields: [businessId], references: [id])
+
+  name                   String
+  description            String?
+  budget                 Decimal @default(0)
+  budgetHidden           Boolean @default(false)
+  durationDays           Int?
+  targetAudience         String?
+  requirements           String?
+  additionalRequirements String?
+
+  platforms Platform[]
+  chatType  ChatType   @default(PRIVATE)
+
+  offerType        OfferType
+  pricePerThousand Decimal   @default(0) // payout per 1000 units of offerType
+
+  spent    Decimal   @default(0)
+  startsAt DateTime? @default(now())
+  endsAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships CampaignMembership[]
+  submissions VideoSubmission[]
+  posts       CreatorPost[]
+  earnings    EarningsAccrual[]
+  tags        CampaignTag[]
+
+  channels ChatChannel[]
+}
+
+model CampaignMembership {
+  id         String           @id @default(cuid())
+  campaignId String
+  creatorId  String
+  status     MembershipStatus @default(PENDING)
+  joinedAt   DateTime?
+  createdAt  DateTime         @default(now())
+
+  campaign Campaign       @relation(fields: [campaignId], references: [id])
+  creator  CreatorProfile @relation(fields: [creatorId], references: [id])
+
+  @@unique([campaignId, creatorId])
+  @@index([creatorId])
+}
+
+// ----------------------------------------------------
+// Submissions, Posts & Metrics
+// ----------------------------------------------------
+
+model VideoSubmission {
+  id              String           @id @default(cuid())
+  campaignId      String
+  creatorId       String
+  title           String?
+  description     String?
+  videoUrl        String?
+  status          SubmissionStatus @default(PENDING_REVIEW)
+  rejectionReason String?
+  submittedAt     DateTime         @default(now())
+  approvedAt      DateTime?
+
+  campaign Campaign       @relation(fields: [campaignId], references: [id])
+  creator  CreatorProfile @relation(fields: [creatorId], references: [id])
+  posts    CreatorPost[]
+}
+
+model CreatorPost {
+  id           String   @id @default(cuid())
+  submissionId String
+  campaignId   String
+  creatorId    String
+  platform     Platform
+  externalUrl  String
+  externalId   String?
+  postedAt     DateTime @default(now())
+
+  submission VideoSubmission @relation(fields: [submissionId], references: [id])
+  campaign   Campaign        @relation(fields: [campaignId], references: [id])
+  creator    CreatorProfile  @relation(fields: [creatorId], references: [id])
+
+  metrics  PostMetricsDaily[]
+  earnings EarningsAccrual[]
+
+  @@unique([platform, externalUrl])
+  @@index([campaignId])
+  @@index([creatorId])
+}
+
+model PostMetricsDaily {
+  id       String   @id @default(cuid())
+  postId   String
+  date     DateTime
+  views    Int      @default(0)
+  reach    Int      @default(0)
+  likes    Int      @default(0)
+  comments Int      @default(0)
+  shares   Int      @default(0)
+  clicks   Int      @default(0)
+
+  post CreatorPost @relation(fields: [postId], references: [id])
+
+  @@unique([postId, date])
+  @@index([date])
+}
+
+model EarningsAccrual {
+  id         String    @id @default(cuid())
+  campaignId String
+  creatorId  String
+  postId     String?
+  date       DateTime
+  offerType  OfferType
+  units      Int       @default(0) // counted units in thousands for CPV/CPR/CPE/CPC
+  unitPrice  Decimal   @default(0)
+  amount     Decimal   @default(0)
+  createdAt  DateTime  @default(now())
+
+  campaign Campaign       @relation(fields: [campaignId], references: [id])
+  creator  CreatorProfile @relation(fields: [creatorId], references: [id])
+  post     CreatorPost?   @relation(fields: [postId], references: [id])
+
+  @@index([campaignId, date])
+  @@index([creatorId, date])
+}
+
+// ----------------------------------------------------
+// Social Links
+// ----------------------------------------------------
+
+model SocialLink {
+  id         String   @id @default(cuid())
+  creatorId  String?
+  businessId String?
+  platform   Platform
+  url        String
+  username   String?
+  followers  Int?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  creator  CreatorProfile?  @relation(fields: [creatorId], references: [id])
+  business BusinessProfile? @relation(fields: [businessId], references: [id])
+
+  @@index([platform])
+}
+
+// ----------------------------------------------------
+// Minimal Chat Skeleton
+// ----------------------------------------------------
+
+model ChatChannel {
+  id         String      @id @default(cuid())
+  campaignId String
+  name       String
+  kind       ChannelKind
+  isDefault  Boolean     @default(false)
+  createdAt  DateTime    @default(now())
+
+  campaign Campaign      @relation(fields: [campaignId], references: [id])
+  messages ChatMessage[]
+
+  @@unique([campaignId, name])
+}
+
+model ChatMessage {
+  id           String   @id @default(cuid())
+  channelId    String
+  senderUserId String
+  content      String
+  createdAt    DateTime @default(now())
+
+  channel ChatChannel @relation(fields: [channelId], references: [id])
+  sender  User        @relation(fields: [senderUserId], references: [id])
+
+  @@index([channelId])
+}
