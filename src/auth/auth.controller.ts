@@ -1,0 +1,354 @@
+import {
+  Controller,
+  Post,
+  Body,
+  Get,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
+import { AuthService } from './auth.service';
+import { RegisterDto } from './dto/register.dto';
+import { LoginDto } from './dto/login.dto';
+import { AuthResponseDto, ProfileResponseDto } from './dto/auth-response.dto';
+import {
+  VerifyEmailDto,
+  ResendVerificationDto,
+  ForgotPasswordDto,
+  ResetPasswordDto,
+  EmailVerificationResponseDto,
+} from './dto/email-verification.dto';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { RequestUser } from '../common/interfaces/request-user.interface';
+
+@ApiTags('Authentication')
+@Controller('auth')
+export class AuthController {
+  constructor(private authService: AuthService) {}
+
+  @ApiOperation({
+    summary: 'Register a new user',
+    description: `Register a new user account. The registration process creates both a user account and the appropriate profile (business or creator) based on the user type.
+
+**Business Registration Requirements:**
+- Company name is required
+- Creates a default business account with GEL currency
+
+**Creator Registration Requirements:**
+- First name, last name, and location are required
+- Creates a default creator account with GEL currency
+
+**Response includes:**
+- JWT access token for immediate authentication
+- User information including profile data`,
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'User successfully registered',
+    type: AuthResponseDto,
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Email already registered',
+    schema: {
+      example: {
+        statusCode: 409,
+        timestamp: '2024-01-01T00:00:00.000Z',
+        path: '/auth/register',
+        method: 'POST',
+        error: 'Conflict',
+        message: 'Email already registered',
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid input data or missing required fields',
+    schema: {
+      example: {
+        statusCode: 400,
+        timestamp: '2024-01-01T00:00:00.000Z',
+        path: '/auth/register',
+        method: 'POST',
+        error: 'Bad Request',
+        message: 'Company name is required for business accounts',
+      },
+    },
+  })
+  @Post('register')
+  async register(@Body() registerDto: RegisterDto) {
+    return this.authService.register(registerDto);
+  }
+
+  @ApiOperation({
+    summary: 'Login user',
+    description: `Authenticate user with email and password.
+
+**Requirements:**
+- Valid email address
+- Password (minimum 6 characters)
+- Email must be verified
+
+**Response includes:**
+- JWT access token valid for 24 hours
+- User information`,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'User successfully logged in',
+    type: AuthResponseDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Invalid credentials or email not verified',
+    schema: {
+      example: {
+        statusCode: 401,
+        timestamp: '2024-01-01T00:00:00.000Z',
+        path: '/auth/login',
+        method: 'POST',
+        error: 'Unauthorized',
+        message: 'Invalid credentials',
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid input data',
+    schema: {
+      example: {
+        statusCode: 400,
+        timestamp: '2024-01-01T00:00:00.000Z',
+        path: '/auth/login',
+        method: 'POST',
+        error: 'Bad Request',
+        message: 'Email must be a valid email address',
+      },
+    },
+  })
+  @HttpCode(HttpStatus.OK)
+  @Post('login')
+  async login(@Body() loginDto: LoginDto) {
+    return this.authService.login(loginDto);
+  }
+
+  @ApiOperation({
+    summary: 'Get current user profile',
+    description: `Retrieve the complete profile of the currently authenticated user.
+
+**Requires:**
+- Valid JWT token in Authorization header
+
+**Returns:**
+- Complete user information
+- Business profile (for business users)
+- Creator profile (for creator users)
+- Account information`,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'User profile retrieved successfully',
+    type: ProfileResponseDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Unauthorized - Invalid or missing JWT token',
+    schema: {
+      example: {
+        statusCode: 401,
+        timestamp: '2024-01-01T00:00:00.000Z',
+        path: '/auth/profile',
+        method: 'GET',
+        error: 'Unauthorized',
+        message: 'User not found',
+      },
+    },
+  })
+  @ApiBearerAuth('JWT-auth')
+  @UseGuards(JwtAuthGuard)
+  @Get('profile')
+  async getProfile(@CurrentUser() user: RequestUser) {
+    return this.authService.getProfile(user.id);
+  }
+
+  @ApiOperation({
+    summary: 'Verify email address',
+    description: `Verify user email address using verification token.
+
+**Process:**
+- User clicks verification link from email
+- Token is validated and marked as used
+- User's email_verified status is updated to true
+- Welcome email is sent upon successful verification
+
+**Token Rules:**
+- Tokens expire after 24 hours
+- Each token can only be used once
+- Invalid or expired tokens return error`,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Email verified successfully',
+    type: EmailVerificationResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid or expired verification token',
+    schema: {
+      example: {
+        statusCode: 400,
+        timestamp: '2024-01-01T00:00:00.000Z',
+        path: '/auth/verify-email',
+        method: 'POST',
+        error: 'Bad Request',
+        message: 'Invalid or expired verification token',
+      },
+    },
+  })
+  @HttpCode(HttpStatus.OK)
+  @Post('verify-email')
+  async verifyEmail(@Body() verifyEmailDto: VerifyEmailDto) {
+    return this.authService.verifyEmail(verifyEmailDto.token);
+  }
+
+  @ApiOperation({
+    summary: 'Resend email verification',
+    description: `Resend email verification link to user.
+
+**Requirements:**
+- Valid email address
+- User must exist in the system
+- Email must not be already verified
+
+**Process:**
+- Generates new verification token
+- Invalidates any existing tokens for the user
+- Sends new verification email
+- Token expires in 24 hours`,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Verification email sent successfully',
+    type: EmailVerificationResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Email already verified or user not found',
+    schema: {
+      example: {
+        statusCode: 400,
+        timestamp: '2024-01-01T00:00:00.000Z',
+        path: '/auth/resend-verification',
+        method: 'POST',
+        error: 'Bad Request',
+        message: 'Email is already verified',
+      },
+    },
+  })
+  @HttpCode(HttpStatus.OK)
+  @Post('resend-verification')
+  async resendVerification(@Body() resendDto: ResendVerificationDto) {
+    return this.authService.resendVerificationEmail(resendDto.email);
+  }
+
+  @ApiOperation({
+    summary: 'Request password reset',
+    description: `Send password reset email to user.
+
+**Requirements:**
+- Valid email address
+- User must exist in the system
+- Email must be verified
+
+**Process:**
+- Generates secure reset token
+- Invalidates any existing reset tokens
+- Sends password reset email
+- Token expires in 1 hour
+
+**Security Features:**
+- Rate limiting on password reset requests
+- Secure token generation
+- Email validation required`,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Password reset email sent if user exists',
+    type: EmailVerificationResponseDto,
+  })
+  @ApiResponse({
+    status: 429,
+    description: 'Too many password reset requests',
+    schema: {
+      example: {
+        statusCode: 429,
+        timestamp: '2024-01-01T00:00:00.000Z',
+        path: '/auth/forgot-password',
+        method: 'POST',
+        error: 'Too Many Requests',
+        message: 'Too many password reset requests. Please try again later.',
+      },
+    },
+  })
+  @HttpCode(HttpStatus.OK)
+  @Post('forgot-password')
+  async forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
+    return this.authService.requestPasswordReset(forgotPasswordDto.email);
+  }
+
+  @ApiOperation({
+    summary: 'Reset password with token',
+    description: `Reset user password using reset token.
+
+**Requirements:**
+- Valid reset token (not expired or used)
+- Strong password (minimum 6 characters)
+
+**Process:**
+- Validates reset token
+- Hashes new password securely
+- Updates user password
+- Marks token as used
+- Invalidates all user sessions
+
+**Security Features:**
+- Token can only be used once
+- Password strength validation
+- Automatic session invalidation
+- Secure password hashing`,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Password reset successfully',
+    type: EmailVerificationResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid or expired reset token',
+    schema: {
+      example: {
+        statusCode: 400,
+        timestamp: '2024-01-01T00:00:00.000Z',
+        path: '/auth/reset-password',
+        method: 'POST',
+        error: 'Bad Request',
+        message: 'Invalid or expired reset token',
+      },
+    },
+  })
+  @HttpCode(HttpStatus.OK)
+  @Post('reset-password')
+  async resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
+    return this.authService.resetPassword(
+      resetPasswordDto.token,
+      resetPasswordDto.password,
+    );
+  }
+}

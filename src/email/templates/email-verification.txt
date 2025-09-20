@@ -1,0 +1,23 @@
+Welcome to {{companyName}}!
+
+Hi {{userName}},
+
+Thank you for joining {{companyName}}! To complete your registration and start using our influencer marketing platform, please verify your email address.
+
+Click here to verify: {{verificationUrl}}
+
+IMPORTANT: This verification link will expire in 24 hours.
+
+Once verified, you'll be able to:
+• Access your dashboard
+• Create or participate in campaigns
+• Connect your social media accounts
+• Start earning or find creators
+
+If you didn't create an account with {{companyName}}, you can safely ignore this email.
+
+Welcome aboard!
+The {{companyName}} Team
+
+Need help? Contact us at {{supportEmail}}
+© 2024 {{companyName}}. All rights reserved.
