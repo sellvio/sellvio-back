@@ -1,57 +1,102 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Verify Your Email - {{companyName}}</title>
+<html lang='ka'>
+  <head>
+    <meta charset='UTF-8' />
+    <meta name='viewport' content='width=device-width, initial-scale=1.0' />
+    <title>დაადასტურეთ თქვენი ელფოსტა - {{companyName}}</title>
     <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
-        .content { background: #f9f9f9; padding: 40px; border-radius: 0 0 8px 8px; }
-        .button { display: inline-block; background: #1890ff; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; margin: 20px 0; font-weight: bold; }
-        .footer { text-align: center; margin-top: 30px; color: #666; font-size: 14px; }
-        .warning { background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 5px; margin: 20px 0; }
+      body {
+        font-family: Arial, sans-serif;
+        line-height: 1.6;
+        color: #333;
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .header {
+        background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%);
+        color: white;
+        padding: 30px;
+        text-align: center;
+        border-radius: 8px 8px 0 0;
+      }
+      .content {
+        background: #f9f9f9;
+        padding: 40px;
+        border-radius: 0 0 8px 8px;
+      }
+      .button {
+        display: inline-block;
+        background: #1890ff;
+        color: white;
+        padding: 15px 30px;
+        text-decoration: none;
+        border-radius: 5px;
+        margin: 20px 0;
+        font-weight: bold;
+      }
+      .footer {
+        text-align: center;
+        margin-top: 30px;
+        color: #666;
+        font-size: 14px;
+      }
+      .warning {
+        background: #fff3cd;
+        border: 1px solid #ffeaa7;
+        padding: 15px;
+        border-radius: 5px;
+        margin: 20px 0;
+      }
     </style>
-</head>
-<body>
-    <div class="header">
-        <h1>🎉 Welcome to {{companyName}}!</h1>
-        <p>Please verify your email address to get started</p>
+  </head>
+  <body>
+    <div class='header'>
+      <h1>🎉 მოგესალმებათ {{companyName}}!</h1>
+      <p>გთხოვთ, დაადასტუროთ თქვენი ელფოსტა, რათა დაიწყოთ</p>
     </div>
 
-    <div class="content">
-        <p>Hi {{userName}},</p>
+    <div class='content'>
+      <p>გამარჯობა {{userName}},</p>
 
-        <p>Thank you for joining {{companyName}}! To complete your registration and start using our influencer marketing platform, please verify your email address by clicking the button below:</p>
+      <p>მადლობა, რომ შემოუერთდით
+        {{companyName}}! რეგისტრაციის დასასრულებლად და პლატფორმის გამოყენების
+        დასაწყებად, გთხოვთ დაადასტუროთ თქვენი ელფოსტა ქვემოთ მოცემული ღილაკით:</p>
 
-        <div style="text-align: center;">
-            <a href="{{verificationUrl}}" class="button">Verify Email Address</a>
-        </div>
+      <div style='text-align: center;'>
+        <a href='{{verificationUrl}}' class='button'>ელფოსტის დადასტურება</a>
+      </div>
 
-        <p>If the button above doesn't work, you can also copy and paste the following link into your browser:</p>
-        <p style="word-break: break-all; background: #f1f1f1; padding: 10px; border-radius: 5px;">{{verificationUrl}}</p>
+      <p>თუ ზემოაღნიშნული ღილაკი არ მუშაობს, შეგიძლიათ დააკოპიროთ და ჩასვათ
+        შემდეგი ბმული თქვენს ბრაუზერში:</p>
+      <p
+        style='word-break: break-all; background: #f1f1f1; padding: 10px; border-radius: 5px;'
+      >{{verificationUrl}}</p>
 
-        <div class="warning">
-            <strong>⚠️ Important:</strong> This verification link will expire in 24 hours. If you don't verify your email within this time, you'll need to request a new verification email.
-        </div>
+      <div class='warning'>
+        <strong>⚠️ მნიშვნელოვანია:</strong>
+        დადასტურების ბმული 24 საათში ვადაგასულდება. თუ ამ დროში არ დაადასტურებთ
+        ელფოსტას, დაგჭირდებათ ახალი ბმულის გამოგზავნა.
+      </div>
 
-        <p>Once verified, you'll be able to:</p>
-        <ul>
-            <li>✅ Access your dashboard</li>
-            <li>✅ Create or participate in campaigns</li>
-            <li>✅ Connect your social media accounts</li>
-            <li>✅ Start earning or find creators</li>
-        </ul>
+      <p>დადასტურების შემდეგ შეძლებთ:</p>
+      <ul>
+        <li>✅ თქვენი დაფის ნახვა</li>
+        <li>✅ კამპანიების შექმნა ან მონაწილეობის მიღება</li>
+        <li>✅ სოციალური ანგარიშების დაკავშირება</li>
+        <li>✅ შემოსავლის მიღება ან კრეატორების პოვნა</li>
+      </ul>
 
-        <p>If you didn't create an account with {{companyName}}, you can safely ignore this email.</p>
+      <p>თუ თქვენ არ შეგიქმნიათ ანგარიში
+        {{companyName}}-ში, შეგიძლიათ უგულებელყოთ ეს წერილი.</p>
 
-        <p>Welcome aboard!</p>
-        <p><strong>The {{companyName}} Team</strong></p>
+      <p>კეთილი იყოს თქვენი მობრძანება!</p>
+      <p><strong>{{companyName}} გუნდი</strong></p>
     </div>
 
-    <div class="footer">
-        <p>Need help? Contact us at <a href="mailto:{{supportEmail}}">{{supportEmail}}</a></p>
-        <p>&copy; 2024 {{companyName}}. All rights reserved.</p>
+    <div class='footer'>
+      <p>გაჭირდათ დახმარება? დაგვიკავშირდით:
+        <a href='mailto:{{supportEmail}}'>{{supportEmail}}</a></p>
+      <p>&copy; 2024 {{companyName}}. ყველა უფლება დაცულია.</p>
     </div>
-</body>
+  </body>
 </html>

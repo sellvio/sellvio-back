@@ -1,94 +1,161 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Welcome to {{companyName}}!</title>
+<html lang='ka'>
+  <head>
+    <meta charset='UTF-8' />
+    <meta name='viewport' content='width=device-width, initial-scale=1.0' />
+    <title>მოგესალმებათ {{companyName}}!</title>
     <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background: linear-gradient(135deg, #52c41a 0%, #389e0d 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
-        .content { background: #f9f9f9; padding: 40px; border-radius: 0 0 8px 8px; }
-        .button { display: inline-block; background: #52c41a; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; margin: 10px; font-weight: bold; }
-        .footer { text-align: center; margin-top: 30px; color: #666; font-size: 14px; }
-        .feature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0; }
-        .feature-item { background: white; padding: 20px; border-radius: 8px; text-align: center; }
+      body {
+        font-family: Arial, sans-serif;
+        line-height: 1.6;
+        color: #333;
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .header {
+        background: linear-gradient(135deg, #52c41a 0%, #389e0d 100%);
+        color: white;
+        padding: 30px;
+        text-align: center;
+        border-radius: 8px 8px 0 0;
+      }
+      .content {
+        background: #f9f9f9;
+        padding: 40px;
+        border-radius: 0 0 8px 8px;
+      }
+      .button {
+        display: inline-block;
+        background: #52c41a;
+        color: white;
+        padding: 15px 30px;
+        text-decoration: none;
+        border-radius: 5px;
+        margin: 10px;
+        font-weight: bold;
+      }
+      .footer {
+        text-align: center;
+        margin-top: 30px;
+        color: #666;
+        font-size: 14px;
+      }
+      .feature-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        margin: 20px 0;
+      }
+      .feature-item {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        text-align: center;
+      }
     </style>
-</head>
-<body>
-    <div class="header">
-        <h1>🎉 Welcome to {{companyName}}!</h1>
-        <p>Your {{userType}} account is now active and ready to use</p>
+  </head>
+  <body>
+    <div class='header'>
+      <h1>🎉 მოგესალმებათ {{companyName}}!</h1>
+      <p>თქვენი {{userType}} ანგარიში აქტიურია და მზადაა გამოსაყენებლად</p>
     </div>
 
-    <div class="content">
-        <p>Hi {{userName}},</p>
+    <div class='content'>
+      <p>გამარჯობა {{userName}},</p>
 
-        <p>Congratulations! Your email has been verified and your {{companyName}} {{userType}} account is now fully activated. You're now part of our growing community of influencers and businesses!</p>
+      <p>გილოცავთ! თქვენი ელფოსტა დადასტურებულია და
+        {{companyName}}-ში თქვენი
+        {{userType}}
+        ანგარიში სრულად გააქტიურებულია. ახლა უკვე ჩვენი მზარდი საზოგადოების
+        ნაწილი ხართ!</p>
 
-        <div style="text-align: center; margin: 30px 0;">
-            <a href="{{dashboardUrl}}" class="button">Go to Dashboard</a>
-            <a href="{{loginUrl}}" class="button" style="background: #1890ff;">Sign In</a>
+      <div style='text-align: center; margin: 30px 0;'>
+        <a href='{{dashboardUrl}}' class='button'>გადადი დაფაზე</a>
+        <a
+          href='{{loginUrl}}'
+          class='button'
+          style='background: #1890ff;'
+        >შესვლა</a>
+      </div>
+
+      <h3>🚀 შემდეგ რა?</h3>
+
+      {{#if (eq userType 'creator')}}
+        <div class='feature-grid'>
+          <div class='feature-item'>
+            <h4>📱 სოციალური ანგარიშების დაკავშირება</h4>
+            <p>დააკავშირეთ თქვენი Instagram, TikTok და YouTube ანგარიშები, რათა
+              გამოფინოთ თქვენი კონტენტი.</p>
+          </div>
+          <div class='feature-item'>
+            <h4>🎯 კამპანიების დათვალიერება</h4>
+            <p>აღმოაჩინეთ საინტერესო ბრენდული კამპანიები, რომლებიც თქვენს ნიშასა
+              და აუდიტორიას შეეფერება.</p>
+          </div>
+          <div class='feature-item'>
+            <h4>💎 კონტენტის შექმნა</h4>
+            <p>გააგრძელეთ თქვენი საუკეთესო ნამუშევრების გაგზავნა და მიიღეთ
+              დამტკიცება ბრენდებისგან ანაზღაურებისთვის.</p>
+          </div>
+          <div class='feature-item'>
+            <h4>💰 მიიღეთ ანაზღაურება</h4>
+            <p>მიიღეთ თანხა დამტკიცებული კონტენტისთვის და გაზარდეთ თქვენი
+              გავლენა.</p>
+          </div>
         </div>
-
-        <h3>🚀 What's Next?</h3>
-
-        {{#if (eq userType "creator")}}
-        <div class="feature-grid">
-            <div class="feature-item">
-                <h4>📱 Connect Social Accounts</h4>
-                <p>Link your Instagram, TikTok, and YouTube accounts to start showcasing your content.</p>
-            </div>
-            <div class="feature-item">
-                <h4>🎯 Browse Campaigns</h4>
-                <p>Discover exciting brand campaigns that match your niche and audience.</p>
-            </div>
-            <div class="feature-item">
-                <h4>💎 Create Content</h4>
-                <p>Submit your best work and get it approved by brands for payment.</p>
-            </div>
-            <div class="feature-item">
-                <h4>💰 Get Paid</h4>
-                <p>Earn money for your approved content and grow your influence.</p>
-            </div>
+      {{else}}
+        <div class='feature-grid'>
+          <div class='feature-item'>
+            <h4>🎯 კამპანიების შექმნა</h4>
+            <p>გაუშვით მარკეტინგული კამპანიები, რათა მიაღწიოთ მიზნობრივ
+              აუდიტორიას კრეატორების მეშვეობით.</p>
+          </div>
+          <div class='feature-item'>
+            <h4>👥 კრეატორების პოვნა</h4>
+            <p>იპოვეთ ტალანტიანი კონტენტის ავტორები, რომლებიც თქვენს ბრენდულ
+              ღირებულებებს შეესაბამება.</p>
+          </div>
+          <div class='feature-item'>
+            <h4>📊 შესრულების მონიტორინგი</h4>
+            <p>აკონტროლეთ კამპანიების ანალიტიკა და გაზომეთ თქვენი მარკეტინგის
+              ROI.</p>
+          </div>
+          <div class='feature-item'>
+            <h4>💳 გადახდების მართვა</h4>
+            <p>განახორციელეთ ტრანზაქციები უსაფრთხოდ ჩვენი ინტეგრირებული
+              გადახდების სისტემით.</p>
+          </div>
         </div>
-        {{else}}
-        <div class="feature-grid">
-            <div class="feature-item">
-                <h4>🎯 Create Campaigns</h4>
-                <p>Launch marketing campaigns to reach your target audience through creators.</p>
-            </div>
-            <div class="feature-item">
-                <h4>👥 Find Creators</h4>
-                <p>Discover talented content creators who align with your brand values.</p>
-            </div>
-            <div class="feature-item">
-                <h4>📊 Track Performance</h4>
-                <p>Monitor campaign analytics and measure your marketing ROI.</p>
-            </div>
-            <div class="feature-item">
-                <h4>💳 Manage Payments</h4>
-                <p>Handle transactions securely with our integrated payment system.</p>
-            </div>
-        </div>
-        {{/if}}
+      {{/if}}
 
-        <h3>📚 Getting Started Resources</h3>
-        <ul>
-            <li>📖 <a href="#" style="color: #1890ff;">Platform Guide</a> - Learn how to use {{companyName}} effectively</li>
-            <li>💡 <a href="#" style="color: #1890ff;">Best Practices</a> - Tips for success on our platform</li>
-            <li>🎥 <a href="#" style="color: #1890ff;">Video Tutorials</a> - Step-by-step walkthroughs</li>
-            <li>❓ <a href="#" style="color: #1890ff;">FAQ</a> - Answers to common questions</li>
-        </ul>
+      <h3>📚 საწყისი რესურსები</h3>
+      <ul>
+        <li>📖
+          <a href='#' style='color: #1890ff;'>პლატფორმის გზამკვლევი</a>
+          - გაეცანით
+          {{companyName}}-ის გამოყენებას</li>
+        <li>💡
+          <a href='#' style='color: #1890ff;'>საუკეთესო პრაქტიკები</a>
+          - რჩევები წარმატებისთვის</li>
+        <li>🎥
+          <a href='#' style='color: #1890ff;'>ვიდეო გაკვეთილები</a>
+          - ნაბიჯ-ნაბიჯ ინსტრუქციები</li>
+        <li>❓
+          <a href='#' style='color: #1890ff;'>ხშირად დასმული კითხვები</a>
+          - პასუხები გავრცელებულ კითხვებზე</li>
+      </ul>
 
-        <p>We're excited to have you on board and can't wait to see what you'll achieve with {{companyName}}!</p>
+      <p>გვიხარია თქვენი შემოუერთება და ვერ ვითმენთ, რომ ვიხილოთ, რას მიაღწევთ
+        {{companyName}}-თან ერთად!</p>
 
-        <p>Happy creating (or campaigning)!</p>
-        <p><strong>The {{companyName}} Team</strong></p>
+      <p>წარმატებებს გისურვებთ!</p>
+      <p><strong>{{companyName}} გუნდი</strong></p>
     </div>
 
-    <div class="footer">
-        <p>Need help getting started? Contact us at <a href="mailto:{{supportEmail}}">{{supportEmail}}</a></p>
-        <p>&copy; 2024 {{companyName}}. All rights reserved.</p>
+    <div class='footer'>
+      <p>დაგჭირდათ დახმარება? დაგვიკავშირდით:
+        <a href='mailto:{{supportEmail}}'>{{supportEmail}}</a></p>
+      <p>&copy; 2024 {{companyName}}. ყველა უფლება დაცულია.</p>
     </div>
-</body>
+  </body>
 </html>

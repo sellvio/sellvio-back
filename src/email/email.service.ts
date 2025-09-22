@@ -131,7 +131,7 @@ export class EmailService {
 
     return this.sendEmail({
       to: email,
-      subject: 'Verify Your Sellvio Account',
+      subject: 'დაადასტურეთ თქვენი Sellvio ანგარიში',
       template: 'email-verification',
       context: {
         userName,
@@ -149,7 +149,7 @@ export class EmailService {
   ): Promise<boolean> {
     return this.sendEmail({
       to: email,
-      subject: 'Welcome to Sellvio!',
+      subject: 'მოგესალმებათ Sellvio!',
       template: 'welcome',
       context: {
         userName,
@@ -171,7 +171,7 @@ export class EmailService {
 
     return this.sendEmail({
       to: email,
-      subject: 'Reset Your Sellvio Password',
+      subject: 'აღადგინეთ თქვენი Sellvio-ს პაროლი',
       template: 'password-reset',
       context: {
         userName,
