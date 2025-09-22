@@ -101,7 +101,7 @@ let EmailService = EmailService_1 = class EmailService {
         const verificationUrl = `${process.env.FRONTEND_URL || 'http://localhost:3001'}/verify-email?token=${token}`;
         return this.sendEmail({
             to: email,
-            subject: 'Verify Your Sellvio Account',
+            subject: 'დაადასტურეთ თქვენი Sellvio ანგარიში',
             template: 'email-verification',
             context: {
                 userName,
@@ -114,7 +114,7 @@ let EmailService = EmailService_1 = class EmailService {
     async sendWelcomeEmail(email, userName, userType) {
         return this.sendEmail({
             to: email,
-            subject: 'Welcome to Sellvio!',
+            subject: 'მოგესალმებათ Sellvio!',
             template: 'welcome',
             context: {
                 userName,
@@ -130,7 +130,7 @@ let EmailService = EmailService_1 = class EmailService {
         const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3001'}/reset-password?token=${token}`;
         return this.sendEmail({
             to: email,
-            subject: 'Reset Your Sellvio Password',
+            subject: 'აღადგინეთ თქვენი Sellvio-ს პაროლი',
             template: 'password-reset',
             context: {
                 userName,

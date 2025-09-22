@@ -106,6 +106,11 @@ Error responses follow this format:
       .swagger-ui .info { margin: 20px 0; }
       .swagger-ui .info .title { color: #1890ff; }
     `,
+        customJs: [
+            'https://unpkg.com/swagger-ui-dist/swagger-ui-bundle.js',
+            'https://unpkg.com/swagger-ui-dist/swagger-ui-standalone-preset.js',
+        ],
+        customCssUrl: ['https://unpkg.com/swagger-ui-dist/swagger-ui.css'],
     });
     await app.listen(process.env.PORT ?? 3000);
 }
