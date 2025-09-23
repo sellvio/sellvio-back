@@ -107,7 +107,46 @@ Error responses follow this format:
     deepScanRoutes: true,
   });
 
-  SwaggerModule.setup('api/docs', app, document);
+  // Serve the OpenAPI JSON directly
+  const expressApp = app.getHttpAdapter().getInstance();
+  expressApp.get('/api-json', (_req: any, res: any) => {
+    res.json(document);
+  });
+
+  // Serve a minimal Swagger UI HTML that loads assets from CDN
+  expressApp.get('/api/docs', (_req: any, res: any) => {
+    const html = `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sellvio API Documentation</title>
+    <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist/swagger-ui.css" />
+    <style>
+      body { margin: 0; padding: 0; }
+      #swagger-ui { max-width: 100%; }
+    </style>
+  </head>
+  <body>
+    <div id="swagger-ui"></div>
+    <script src="https://unpkg.com/swagger-ui-dist/swagger-ui-bundle.js"></script>
+    <script src="https://unpkg.com/swagger-ui-dist/swagger-ui-standalone-preset.js"></script>
+    <script>
+      window.onload = function () {
+        window.ui = SwaggerUIBundle({
+          url: '/api-json',
+          dom_id: '#swagger-ui',
+          presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+          layout: 'BaseLayout',
+          persistAuthorization: true,
+        });
+      };
+    </script>
+  </body>
+</html>`;
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  });
 
   await app.listen(process.env.PORT ?? 3000);
 }
