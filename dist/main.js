@@ -91,30 +91,7 @@ Error responses follow this format:
         operationIdFactory: (controllerKey, methodKey) => methodKey,
         deepScanRoutes: true,
     });
-    swagger_1.SwaggerModule.setup('api/docs', app, document, {
-        swaggerOptions: {
-            persistAuthorization: true,
-            displayRequestDuration: true,
-            filter: true,
-            showRequestHeaders: true,
-            docExpansion: 'none',
-            defaultModelsExpandDepth: 2,
-            defaultModelExpandDepth: 2,
-        },
-        customfavIcon: '/favicon.ico',
-        customSiteTitle: 'Sellvio API Documentation',
-        customCss: `
-      .swagger-ui .topbar { background-color: #1890ff; }
-      .swagger-ui .topbar .download-url-wrapper { display: none; }
-      .swagger-ui .info { margin: 20px 0; }
-      .swagger-ui .info .title { color: #1890ff; }
-    `,
-        customJs: [
-            'https://unpkg.com/swagger-ui-dist/swagger-ui-bundle.js',
-            'https://unpkg.com/swagger-ui-dist/swagger-ui-standalone-preset.js',
-        ],
-        customCssUrl: ['https://unpkg.com/swagger-ui-dist/swagger-ui.css'],
-    });
+    swagger_1.SwaggerModule.setup('api/docs', app, document);
     await app.listen(process.env.PORT ?? 3000);
 }
 bootstrap();
