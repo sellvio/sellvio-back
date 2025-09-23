@@ -14,20 +14,13 @@ async function bootstrap() {
     }),
   );
 
-  // Enable CORS
-  const allowedOrigins = process.env.CORS_ORIGIN?.split(',').map((s) =>
-    s.trim(),
-  );
-
+  // Enable CORS: reflect request origin and allow credentials
   app.enableCors({
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true); // allow server-to-server and curl
-      if (allowedOrigins?.includes(origin)) return callback(null, true);
-      return callback(new Error('Not allowed by CORS'), false);
-    },
+    origin: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     allowedHeaders: 'Content-Type, Authorization',
     credentials: true,
+    optionsSuccessStatus: 204,
   });
   app.useGlobalPipes(
     new ValidationPipe({
