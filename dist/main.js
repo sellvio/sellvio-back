@@ -7,7 +7,10 @@ const common_1 = require("@nestjs/common");
 const swagger_1 = require("@nestjs/swagger");
 async function bootstrap() {
     const app = await core_1.NestFactory.create(app_module_1.AppModule);
-    app.use((0, helmet_1.default)());
+    app.use((0, helmet_1.default)({
+        contentSecurityPolicy: false,
+        crossOriginResourcePolicy: { policy: 'cross-origin' },
+    }));
     app.useGlobalPipes(new common_1.ValidationPipe({
         whitelist: true,
         forbidNonWhitelisted: true,
