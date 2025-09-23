@@ -76,8 +76,7 @@ Error responses follow this format:
         description: 'Enter JWT token',
         in: 'header',
     }, 'JWT-auth')
-        .addServer('http://localhost:3000', 'Development server')
-        .addServer('https://api.sellvio.com', 'Production server')
+        .addServer('/', 'Current server')
         .addTag('Authentication', 'User authentication and profile management')
         .addTag('Campaigns', 'Campaign creation and management')
         .addTag('Videos', 'Content creation and review workflows')
