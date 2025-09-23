@@ -95,8 +95,14 @@ Error responses follow this format:
       },
       'JWT-auth',
     )
-    .addServer('http://localhost:3000', 'Development server')
-    .addServer('https://sellvio-back.vercel.app', 'Production server')
+    .addServer(
+      process.env.NODE_ENV === 'development'
+        ? 'http://localhost:4444'
+        : 'https://sellvio-back.vercel.app',
+      process.env.NODE_ENV === 'development'
+        ? 'Development server'
+        : 'Production server',
+    )
     .addTag('Authentication', 'User authentication and profile management')
     .addTag('Campaigns', 'Campaign creation and management')
     .addTag('Videos', 'Content creation and review workflows')
