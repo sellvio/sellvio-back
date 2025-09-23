@@ -13,6 +13,22 @@ async function bootstrap() {
       crossOriginResourcePolicy: { policy: 'cross-origin' },
     }),
   );
+
+  // Enable CORS
+  const allowedOrigins = process.env.CORS_ORIGIN?.split(',').map((s) =>
+    s.trim(),
+  );
+
+  app.enableCors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true); // allow server-to-server and curl
+      if (allowedOrigins?.includes(origin)) return callback(null, true);
+      return callback(new Error('Not allowed by CORS'), false);
+    },
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    allowedHeaders: 'Content-Type, Authorization',
+    credentials: true,
+  });
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -86,7 +102,8 @@ Error responses follow this format:
       },
       'JWT-auth',
     )
-    .addServer('/', 'Current server')
+    .addServer('http://localhost:3000', 'Development server')
+    .addServer('https://sellvio-back.vercel.app', 'Production server')
     .addTag('Authentication', 'User authentication and profile management')
     .addTag('Campaigns', 'Campaign creation and management')
     .addTag('Videos', 'Content creation and review workflows')
