@@ -34,13 +34,17 @@ import {
   VideoWithDetailsDto,
   VideoSocialPostDto,
 } from './dto/video-response.dto';
+import { ApifyHelper } from '../helpers/apify.helper';
 
 @ApiTags('Videos')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard)
 @Controller('videos')
 export class VideosController {
-  constructor(private readonly videosService: VideosService) {}
+  constructor(
+    private readonly videosService: VideosService,
+    private readonly apifyHelper: ApifyHelper,
+  ) {}
 
   @ApiOperation({
     summary: 'Submit video for campaign',
@@ -569,5 +573,99 @@ export class VideosController {
       postUrl,
       platformPostId,
     );
+  }
+
+  @ApiOperation({ summary: 'Test TikTok views via Apify (batch)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        urls: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of TikTok video URLs',
+        },
+      },
+      required: ['urls'],
+      example: {
+        urls: [
+          'https://www.tiktok.com/@sellvio_/video/7553328936638254344',
+          'https://www.tiktok.com/@sellvio/video/7553281940481133825',
+        ],
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns view count for the provided TikTok video URL',
+    schema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string' },
+        views: { type: 'number' },
+        likes: { type: 'number' },
+        comments: { type: 'number' },
+        shares: { type: 'number' },
+      },
+      example: {
+        url: 'https://www.tiktok.com/@user/video/7221234567890123456',
+        views: 1234567,
+        likes: 123456,
+        comments: 123456,
+        shares: 123456,
+      },
+    },
+  })
+  @Post('tiktok/views')
+  async getTiktokViews(@Body('urls') urls: string[]) {
+    const results = await this.apifyHelper.getTiktokVideosInfo(urls);
+    return { results };
+  }
+
+  @ApiOperation({ summary: 'Test Instagram views via Apify (batch)' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        urls: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of Instagram post/reel/video URLs',
+        },
+      },
+      required: ['urls'],
+      example: {
+        urls: [
+          'https://www.instagram.com/p/DPFGqiKEXW3/',
+          'https://www.instagram.com/p/DPHxcHfCaKk/',
+        ],
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns view count for the provided Instagram URL',
+    schema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string' },
+        views: { type: 'number' },
+        likes: { type: 'number' },
+        comments: { type: 'number' },
+        shares: { type: 'number' },
+      },
+      example: {
+        url: 'https://www.instagram.com/reel/CxABC12345_/',
+        views: 543210,
+        likes: 54321,
+        comments: 54321,
+        shares: 54321,
+      },
+    },
+  })
+  @Post('instagram/views')
+  async getInstagramViews(@Body('urls') urls: string[]) {
+    const results = await this.apifyHelper.getInstagramVideosInfo(urls);
+    return { results };
   }
 }
