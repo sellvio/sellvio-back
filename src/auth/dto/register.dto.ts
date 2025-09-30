@@ -1,6 +1,8 @@
 import { Transform } from 'class-transformer';
 import {
+  isArray,
   IsArray,
+  IsDate,
   IsEmail,
   IsEnum,
   IsOptional,
@@ -8,7 +10,7 @@ import {
   Length,
   MinLength,
 } from 'class-validator';
-import { user_type, creator_type } from '@prisma/client';
+import { user_type, creator_type, social_platform } from '@prisma/client';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class RegisterDto {
@@ -55,14 +57,23 @@ export class RegisterDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsString()
-  @MinLength(2)
-  location?: string;
+  @IsDate()
+  date_of_birth?: Date;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsArray()
-  tags?: string[];
+  tags?: number[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsArray()
+  social_media_account?: { platform: social_platform; profile_url: string }[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  location?: string;
 
   // Business fields (optional if user_type is BUSINESS)
   @ApiPropertyOptional()
@@ -70,6 +81,12 @@ export class RegisterDto {
   @IsString()
   @MinLength(2)
   company_name?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  legal_status?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -85,4 +102,24 @@ export class RegisterDto {
   @IsOptional()
   @IsString()
   phone?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  logo_url?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  business_cover_image_url?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  business_industry_name?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsArray()
+  company_tags?: number[];
 }

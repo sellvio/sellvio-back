@@ -33,56 +33,56 @@ async function bootstrap() {
 
   const config = new DocumentBuilder()
     .setTitle('Sellvio API')
-    .setDescription(
-      `
-# Sellvio Influencer Marketing Platform API
+    //     .setDescription(
+    //       `
+    // # Sellvio Influencer Marketing Platform API
 
-## Overview
-Sellvio is a comprehensive influencer marketing platform that connects businesses with content creators. This API enables:
+    // ## Overview
+    // Sellvio is a comprehensive influencer marketing platform that connects businesses with content creators. This API enables:
 
-- **User Management**: Business and creator account registration and management
-- **Campaign Management**: Create, manage, and participate in marketing campaigns
-- **Content Management**: Video submission, review, and approval workflows
-- **Financial System**: Multi-currency transactions and payment processing
-- **Social Media Integration**: Connect and manage social media accounts
-- **Analytics**: Comprehensive reporting and analytics
-- **Admin Tools**: Platform administration and moderation
+    // - **User Management**: Business and creator account registration and management
+    // - **Campaign Management**: Create, manage, and participate in marketing campaigns
+    // - **Content Management**: Video submission, review, and approval workflows
+    // - **Financial System**: Multi-currency transactions and payment processing
+    // - **Social Media Integration**: Connect and manage social media accounts
+    // - **Analytics**: Comprehensive reporting and analytics
+    // - **Admin Tools**: Platform administration and moderation
 
-## Authentication
-All authenticated endpoints require a Bearer token in the Authorization header:
-\`\`\`
-Authorization: Bearer <your_jwt_token>
-\`\`\`
+    // ## Authentication
+    // All authenticated endpoints require a Bearer token in the Authorization header:
+    // \`\`\`
+    // Authorization: Bearer <your_jwt_token>
+    // \`\`\`
 
-## User Types
-- **Business**: Create campaigns, review content, process payments
-- **Creator**: Participate in campaigns, submit content, receive payments
+    // ## User Types
+    // - **Business**: Create campaigns, review content, process payments
+    // - **Creator**: Participate in campaigns, submit content, receive payments
 
-## Response Format
-All successful responses follow this format:
-\`\`\`json
-{
-  "success": true,
-  "data": {...},
-  "timestamp": "2024-01-01T00:00:00.000Z",
-  "path": "/api/endpoint",
-  "method": "GET"
-}
-\`\`\`
+    // ## Response Format
+    // All successful responses follow this format:
+    // \`\`\`json
+    // {
+    //   "success": true,
+    //   "data": {...},
+    //   "timestamp": "2024-01-01T00:00:00.000Z",
+    //   "path": "/api/endpoint",
+    //   "method": "GET"
+    // }
+    // \`\`\`
 
-Error responses follow this format:
-\`\`\`json
-{
-  "statusCode": 400,
-  "timestamp": "2024-01-01T00:00:00.000Z",
-  "path": "/api/endpoint",
-  "method": "GET",
-  "error": "Bad Request",
-  "message": "Detailed error message"
-}
-\`\`\`
-    `,
-    )
+    // Error responses follow this format:
+    // \`\`\`json
+    // {
+    //   "statusCode": 400,
+    //   "timestamp": "2024-01-01T00:00:00.000Z",
+    //   "path": "/api/endpoint",
+    //   "method": "GET",
+    //   "error": "Bad Request",
+    //   "message": "Detailed error message"
+    // }
+    // \`\`\`
+    //     `,
+    //     )
     .setVersion('1.0.0')
     .addBearerAuth(
       {
@@ -109,12 +109,12 @@ Error responses follow this format:
     .addTag('Transactions', 'Financial operations and account management')
     .addTag('Social Media', 'Social media platform integrations')
     .addTag('Admin', 'Administrative operations and system management')
-    .setContact(
-      'Sellvio Support',
-      'https://sellvio.com/support',
-      'support@sellvio.com',
-    )
-    .setLicense('MIT', 'https://opensource.org/licenses/MIT')
+    // .setContact(
+    //   'Sellvio Support',
+    //   'https://sellvio.com/support',
+    //   'support@sellvio.com',
+    // )
+    // .setLicense('MIT', 'https://opensource.org/licenses/MIT')
     .build();
 
   const document = SwaggerModule.createDocument(app, config, {

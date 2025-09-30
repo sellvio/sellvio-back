@@ -15,6 +15,7 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { EmailModule } from './email/email.module';
+import { EnumsController } from './common/enums.controller';
 
 @Module({
   imports: [
@@ -33,7 +34,7 @@ import { EmailModule } from './email/email.module';
     AdminModule,
     EmailModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, EnumsController],
   providers: [
     AppService,
     {

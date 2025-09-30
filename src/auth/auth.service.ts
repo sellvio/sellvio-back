@@ -12,7 +12,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
-import { user_type } from '@prisma/client';
+import { business_industry, legal_status, user_type } from '@prisma/client';
 
 @Injectable()
 export class AuthService {
@@ -68,8 +68,21 @@ export class AuthService {
             business_email: profileData.business_email,
             phone: profileData.phone,
             website_url: profileData.website_url,
+            logo_url: profileData.logo_url,
+            business_cover_image_url: profileData.business_cover_image_url,
+            legal_status: profileData.legal_status as legal_status,
+            location: profileData.location,
           },
         });
+
+        if (profileData.company_tags) {
+          await tx.business_tags.createMany({
+            data: profileData.company_tags.map((tag) => ({
+              business_id: user.id,
+              tag_id: Number(tag),
+            })),
+          });
+        }
 
         // Create default business account
         await tx.business_accounts.create({
@@ -101,6 +114,25 @@ export class AuthService {
             phone: profileData.phone,
           },
         });
+
+        if (profileData.social_media_account) {
+          await tx.social_media_accounts.createMany({
+            data: profileData.social_media_account.map((account) => ({
+              creator_id: user.id,
+              platform: account.platform,
+              profile_url: account.profile_url,
+            })),
+          });
+        }
+
+        if (profileData.tags) {
+          await tx.creator_tags.createMany({
+            data: profileData.tags.map((tag) => ({
+              creator_id: user.id,
+              tag_id: Number(tag),
+            })),
+          });
+        }
 
         // Create default creator account
         await tx.creator_accounts.create({
