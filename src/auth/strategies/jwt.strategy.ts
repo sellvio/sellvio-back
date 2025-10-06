@@ -29,15 +29,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('User not found');
     }
 
-    if (!user.email_verified) {
-      throw new UnauthorizedException('Email not verified');
-    }
+    // if (!user.email_verified) {
+    //   throw new UnauthorizedException('Email not verified');
+    // }
 
     return {
       id: user.id,
       email: user.email,
       user_type: user.user_type!,
-      email_verified: user.email_verified,
+      email_verified: !!user.email_verified,
     };
   }
 }

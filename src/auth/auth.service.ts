@@ -317,6 +317,15 @@ export class AuthService {
             logo_url: true,
             description: true,
             business_employee_range: true,
+            business_cover_image_url: true,
+            legal_status: true,
+            location: true,
+            business_industry_name: true,
+            business_tags: {
+              select: {
+                tag_id: true,
+              },
+            },
           },
         },
         creator_profiles: {
