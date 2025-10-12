@@ -13,6 +13,7 @@ import { EmailService } from '../email/email.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { business_industry, legal_status, user_type } from '@prisma/client';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 
 @Injectable()
 export class AuthService {
@@ -75,9 +76,9 @@ export class AuthService {
           },
         });
 
-        if (profileData.company_tags) {
+        if (profileData.business_tags) {
           await tx.business_tags.createMany({
-            data: profileData.company_tags.map((tag) => ({
+            data: profileData.business_tags.map((tag) => ({
               business_id: user.id,
               tag_id: Number(tag),
             })),
@@ -349,6 +350,119 @@ export class AuthService {
     }
 
     return user;
+  }
+
+  async updateProfile(userId: number, dto: UpdateProfileDto) {
+    const user = await this.prisma.users.findUnique({
+      where: { id: userId },
+      select: { id: true, user_type: true },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      if (user.user_type === user_type.creator) {
+        const creatorData: any = {};
+        if (dto.first_name !== undefined)
+          creatorData.first_name = dto.first_name;
+        if (dto.last_name !== undefined) creatorData.last_name = dto.last_name;
+        if (dto.nickname !== undefined) creatorData.nickname = dto.nickname;
+        if (dto.creator_type !== undefined)
+          creatorData.creator_type = dto.creator_type;
+        if (dto.bio !== undefined) creatorData.bio = dto.bio;
+        if (dto.profile_image_url !== undefined)
+          creatorData.profile_image_url = dto.profile_image_url;
+        if (dto.location !== undefined) creatorData.location = dto.location;
+        if (dto.phone !== undefined) creatorData.phone = dto.phone;
+        if (dto.date_of_birth !== undefined)
+          creatorData.date_of_birth = dto.date_of_birth as any;
+
+        if (Object.keys(creatorData).length > 0) {
+          await tx.creator_profiles.update({
+            where: { user_id: userId },
+            data: creatorData,
+          });
+        }
+
+        if (dto.tags !== undefined) {
+          await tx.creator_tags.deleteMany({ where: { creator_id: userId } });
+          if (dto.tags.length > 0) {
+            await tx.creator_tags.createMany({
+              data: dto.tags.map((tagId) => ({
+                creator_id: userId,
+                tag_id: Number(tagId),
+              })),
+              skipDuplicates: true,
+            });
+          }
+        }
+
+        if (dto.social_media_account !== undefined) {
+          await tx.social_media_accounts.deleteMany({
+            where: { creator_id: userId },
+          });
+          if (dto.social_media_account.length > 0) {
+            await tx.social_media_accounts.createMany({
+              data: dto.social_media_account.map((acc) => ({
+                creator_id: userId,
+                platform: acc.platform,
+                profile_url: acc.profile_url,
+              })),
+              skipDuplicates: true,
+            });
+          }
+        }
+      } else if (user.user_type === user_type.business) {
+        const businessData: any = {};
+        if (dto.company_name !== undefined)
+          businessData.company_name = dto.company_name;
+        if (dto.business_email !== undefined)
+          businessData.business_email = dto.business_email;
+        if (dto.phone !== undefined) businessData.phone = dto.phone;
+        if (dto.website_url !== undefined)
+          businessData.website_url = dto.website_url;
+        if (dto.logo_url !== undefined) businessData.logo_url = dto.logo_url;
+        if (dto.description !== undefined)
+          businessData.description = dto.description;
+        if (dto.legal_status !== undefined)
+          businessData.legal_status = dto.legal_status as legal_status;
+        if (dto.location !== undefined) businessData.location = dto.location;
+        if (dto.business_cover_image_url !== undefined)
+          businessData.business_cover_image_url = dto.business_cover_image_url;
+        if (dto.business_industry_name !== undefined)
+          businessData.business_industry_name =
+            dto.business_industry_name as business_industry;
+
+        if (Object.keys(businessData).length > 0) {
+          await tx.business_profiles.update({
+            where: { user_id: userId },
+            data: businessData,
+          });
+        }
+
+        if (dto.business_tags !== undefined) {
+          await tx.business_tags.deleteMany({ where: { business_id: userId } });
+          if (dto.business_tags.length > 0) {
+            await tx.business_tags.createMany({
+              data: dto.business_tags.map((tagId) => ({
+                business_id: userId,
+                tag_id: Number(tagId),
+              })),
+              skipDuplicates: true,
+            });
+          }
+        }
+      }
+
+      await tx.users.update({
+        where: { id: userId },
+        data: { updated_at: new Date() },
+      });
+    });
+
+    return this.getProfile(userId);
   }
 
   private async sendVerificationEmail(user: any) {

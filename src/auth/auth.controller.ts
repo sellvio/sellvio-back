@@ -28,6 +28,8 @@ import {
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequestUser } from '../common/interfaces/request-user.interface';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { Patch, Put } from '@nestjs/common';
 
 @ApiTags('Authentication')
 @Controller('auth')
@@ -134,7 +136,7 @@ export class AuthController {
           example: 'https://img.example/cover.png',
         },
         business_industry_name: { type: 'string', example: 'Marketing' },
-        company_tags: {
+        business_tags: {
           type: 'array',
           items: { type: 'number' },
           example: [9, 10],
@@ -262,6 +264,69 @@ export class AuthController {
   @Get('profile')
   async getProfile(@CurrentUser() user: RequestUser) {
     return this.authService.getProfile(user.id);
+  }
+
+  @ApiOperation({
+    summary: 'Edit current user profile',
+    description: `Update profile fields for the authenticated user. The updatable fields depend on the user's type.
+
+For creator users, you can update: first_name, last_name, nickname, creator_type, bio, profile_image_url, location, phone, date_of_birth, tags (replace), and social_media_account (replace).
+
+For business users, you can update: company_name, business_email, phone, website_url, logo_url, description, legal_status, location, business_cover_image_url, business_industry_name, and business_tags (replace).`,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Profile updated successfully',
+    type: ProfileResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiBearerAuth('JWT-auth')
+  @UseGuards(JwtAuthGuard)
+  @ApiBody({
+    description: 'Edit profile body. Provide only fields you want to update.',
+    examples: {
+      Creator: {
+        summary: 'Creator update example',
+        value: {
+          first_name: 'John',
+          last_name: 'Doe',
+          nickname: 'johnny',
+          creator_type: 'beginner',
+          bio: 'I make content',
+          profile_image_url: 'https://img.example/p.jpg',
+          location: 'Tbilisi',
+          phone: '+995 555 000000',
+          date_of_birth: '1999-01-01T00:00:00.000Z',
+          tags: [1, 3],
+          social_media_account: [
+            { platform: 'tiktok', profile_url: 'https://tiktok.com/@john' },
+          ],
+        },
+      },
+      Business: {
+        summary: 'Business update example',
+        value: {
+          company_name: 'Acme Corp',
+          business_email: 'biz@acme.com',
+          phone: '+995 555 111111',
+          website_url: 'https://acme.com',
+          logo_url: 'https://img.example/logo.png',
+          description: 'We do things',
+          legal_status: 'StartupLLC',
+          location: 'Tbilisi',
+          business_cover_image_url: 'https://img.example/cover.png',
+          business_industry_name: 'Marketing',
+          business_tags: [9, 10],
+        },
+      },
+    },
+  })
+  @Patch('profile')
+  async updateProfile(
+    @CurrentUser() user: RequestUser,
+    @Body() dto: UpdateProfileDto,
+  ) {
+    return this.authService.updateProfile(user.id, dto);
   }
 
   @ApiOperation({

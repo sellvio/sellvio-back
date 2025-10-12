@@ -121,5 +121,5 @@ export class RegisterDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsArray()
-  company_tags?: number[];
+  business_tags?: number[];
 }
