@@ -325,6 +325,11 @@ export class AuthService {
             business_tags: {
               select: {
                 tag_id: true,
+                tags: {
+                  select: {
+                    name: true,
+                  },
+                },
               },
             },
           },

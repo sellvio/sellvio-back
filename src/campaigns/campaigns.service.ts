@@ -19,25 +19,31 @@ export class CampaignsService {
   constructor(private prisma: PrismaService) {}
 
   async create(businessId: number, createCampaignDto: CreateCampaignDto) {
-    const { platforms, tags, ...campaignData } = createCampaignDto;
+    const { platforms, tags, media, ...rest } = createCampaignDto;
+    const campaignData = { ...rest } as any;
 
-    // Verify user is a business
-    const user = await this.prisma.users.findUnique({
-      where: { id: businessId },
-      include: { business_profiles: true },
-    });
+    // // Verify user is a business
+    // const user = await this.prisma.users.findUnique({
+    //   where: { id: businessId },
+    //   include: { business_profiles: true },
+    // });
 
-    if (!user || user.user_type !== user_type.business) {
-      throw new ForbiddenException('Only business users can create campaigns');
-    }
+    // if (!user || user.user_type !== user_type.business) {
+    //   throw new ForbiddenException('Only business users can create campaigns');
+    // }
 
     const result = await this.prisma.$transaction(async (tx) => {
       // Create campaign
+      const startDate = new Date();
+      const endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + (campaignData.duration_days || 0));
       const campaign = await tx.campaigns.create({
         data: {
           business_id: businessId,
           ...campaignData,
-          start_date: new Date(),
+          start_date: startDate,
+          end_date: endDate,
+          finish_date: endDate,
         },
       });
 
@@ -69,6 +75,18 @@ export class CampaignsService {
         }
       }
 
+      // Add media assets
+      if (media && media.length > 0) {
+        await tx.campaign_assets.createMany({
+          data: media.map((m) => ({
+            campaign_id: campaign.id,
+            asset_name: m.name,
+            asset_url: m.url,
+            asset_type: m.type || 'other',
+          })),
+        });
+      }
+
       // Create budget tracking
       await tx.campaign_budget_tracking.create({
         data: {
@@ -87,6 +105,7 @@ export class CampaignsService {
   async findAll(pagination: PaginationDto, filters?: any) {
     const { page, limit } = pagination;
     const skip = (page - 1) * limit;
+    console.log(filters);
 
     const where: any = {};
 
@@ -231,13 +250,27 @@ export class CampaignsService {
       throw new ForbiddenException('You can only update your own campaigns');
     }
 
-    const { platforms, tags, ...campaignData } = updateCampaignDto;
+    const { platforms, tags, ...rest } = updateCampaignDto as any;
+    const campaignData: any = { ...rest };
 
     const result = await this.prisma.$transaction(async (tx) => {
-      const updatedCampaign = await tx.campaigns.update({
+      let updatedCampaign = await tx.campaigns.update({
         where: { id },
         data: campaignData,
       });
+
+      // Recompute end_date and finish_date when duration_days changes
+      if (campaignData.duration_days !== undefined) {
+        const currentStart = updatedCampaign.start_date
+          ? new Date(updatedCampaign.start_date)
+          : new Date();
+        const newEnd = new Date(currentStart);
+        newEnd.setDate(newEnd.getDate() + campaignData.duration_days);
+        updatedCampaign = await tx.campaigns.update({
+          where: { id },
+          data: { end_date: newEnd, finish_date: newEnd },
+        });
+      }
 
       // Update platforms if provided
       if (platforms !== undefined) {
@@ -302,8 +335,24 @@ export class CampaignsService {
       throw new BadRequestException('Cannot delete active campaigns');
     }
 
-    await this.prisma.campaigns.delete({
-      where: { id },
+    await this.prisma.$transaction(async (tx) => {
+      // Remove dependent records that don't cascade
+      await tx.campaign_budget_tracking.deleteMany({
+        where: { campaign_id: id },
+      });
+      // Remove chat server tree (servers -> channels, memberships cascade on server delete)
+      await tx.chat_servers.deleteMany({ where: { campaign_id: id } });
+
+      // Optional cleanup (most of these have onDelete: Cascade, but safe to clear explicitly)
+      await tx.campaign_platforms.deleteMany({ where: { campaign_id: id } });
+      await tx.campaign_tags.deleteMany({ where: { campaign_id: id } });
+      await tx.campaign_assets.deleteMany({ where: { campaign_id: id } });
+      await tx.campaign_analytics.deleteMany({ where: { campaign_id: id } });
+      await tx.campaign_participants.deleteMany({ where: { campaign_id: id } });
+      await tx.campaign_videos.deleteMany({ where: { campaign_id: id } });
+
+      // Finally delete the campaign
+      await tx.campaigns.delete({ where: { id } });
     });
 
     return { message: 'Campaign deleted successfully' };

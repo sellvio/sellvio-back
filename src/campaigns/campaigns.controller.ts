@@ -23,6 +23,7 @@ import { CampaignsService } from './campaigns.service';
 import { CreateCampaignDto } from './dto/create-campaign.dto';
 import { UpdateCampaignDto } from './dto/update-campaign.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
+import { ListCampaignsDto } from './dto/list-campaigns.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -99,6 +100,40 @@ export class CampaignsController {
   @UseGuards(RolesGuard)
   @Roles(user_type.business)
   @Post()
+  @ApiBody({
+    description: 'Create campaign body',
+    examples: {
+      Full: {
+        summary: 'All fields example',
+        value: {
+          name: 'Summer Collection Campaign',
+          description: 'Promote our new summer collection',
+          budget: 1000.0,
+          budget_hidden: false,
+          duration_days: 30,
+          status: 'draft',
+          chat_type: 'public',
+          target_creator_types: ['beginner', 'influencer'],
+          additional_requirements: 'Must have experience with beauty products',
+          payment_type: 'cost_per_view',
+          payment_amount: 50.0,
+          payment_per_quantity: 1000,
+          requirements: 'Create engaging 30-second videos',
+          target_audience: 'Young adults aged 18-35',
+          campaign_image_url: 'https://example.com/image.jpg',
+          platforms: ['instagram', 'tiktok'],
+          tags: ['fashion', 'summer'],
+          media: [
+            {
+              name: 'Banner Image',
+              url: 'https://example.com/banner.jpg',
+              type: 'image',
+            },
+          ],
+        },
+      },
+    },
+  })
   create(
     @Body() createCampaignDto: CreateCampaignDto,
     @CurrentUser() user: RequestUser,
@@ -169,12 +204,9 @@ export class CampaignsController {
     },
   })
   @Get()
-  findAll(
-    @Query() pagination: PaginationDto,
-    @Query('status') status?: campaign_status,
-    @Query('business_id', new ParseIntPipe({ optional: true }))
-    business_id?: number,
-  ) {
+  findAll(@Query() query: ListCampaignsDto) {
+    const { page, limit, status, business_id } = query;
+    const pagination: PaginationDto = { page, limit } as PaginationDto;
     const filters = { status, business_id };
     return this.campaignsService.findAll(pagination, filters);
   }

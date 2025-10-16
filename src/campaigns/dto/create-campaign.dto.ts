@@ -46,9 +46,7 @@ export class CreateCampaignDto {
   @Min(1)
   duration_days: number;
 
-  @ApiProperty({ example: '2024-12-31' })
-  @IsDateString()
-  finish_date: string;
+  // finish_date is computed server-side from start_date + duration_days
 
   @ApiPropertyOptional({
     enum: campaign_status,
@@ -113,4 +111,21 @@ export class CreateCampaignDto {
   @IsArray()
   @IsString({ each: true })
   tags?: string[];
+
+  @ApiPropertyOptional({
+    description: 'Optional media assets (images, links) for the campaign',
+    type: 'array',
+    items: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', example: 'Banner Image' },
+        url: { type: 'string', example: 'https://example.com/banner.jpg' },
+        type: { type: 'string', example: 'image' },
+      },
+      required: ['name', 'url'],
+    },
+  })
+  @IsOptional()
+  @IsArray()
+  media?: { name: string; url: string; type?: string }[];
 }
