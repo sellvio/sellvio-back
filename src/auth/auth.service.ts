@@ -174,6 +174,11 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    // If client provided user_type, ensure it matches stored user type
+    if (loginDto.user_type && loginDto.user_type !== user.user_type) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
     const { access_token, refresh_token } = this.generateTokens(user);
     await this.storeRefreshToken(user.id, refresh_token);
 
@@ -439,6 +444,10 @@ export class AuthService {
         if (dto.business_industry_name !== undefined)
           businessData.business_industry_name =
             dto.business_industry_name as business_industry;
+
+        console.log(dto.business_employee_range);
+        if (dto.business_employee_range)
+          businessData.business_employee_range = dto.business_employee_range;
 
         if (Object.keys(businessData).length > 0) {
           await tx.business_profiles.update({

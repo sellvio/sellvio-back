@@ -1,5 +1,12 @@
-import { IsEmail, IsString, MinLength } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import {
+  IsEmail,
+  IsEnum,
+  IsOptional,
+  IsString,
+  MinLength,
+} from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { user_type } from '@prisma/client';
 
 export class LoginDto {
   @ApiProperty({ example: 'user@example.com' })
@@ -10,4 +17,12 @@ export class LoginDto {
   @IsString()
   @MinLength(6)
   password: string;
+
+  @ApiPropertyOptional({
+    enum: user_type,
+    description: 'Optional user type to assert on login',
+  })
+  @IsOptional()
+  @IsEnum(user_type)
+  user_type?: user_type;
 }

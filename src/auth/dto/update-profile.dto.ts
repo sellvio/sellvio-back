@@ -112,6 +112,11 @@ export class UpdateProfileDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  business_employee_range?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   website_url?: string;
 
   @ApiPropertyOptional()

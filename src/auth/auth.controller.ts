@@ -202,6 +202,22 @@ export class AuthController {
     return this.authService.login(loginDto);
   }
 
+  @ApiBody({
+    description: 'Login body',
+    schema: {
+      type: 'object',
+      properties: {
+        email: { type: 'string', example: 'user@example.com' },
+        password: { type: 'string', example: 'very-strong-password' },
+        user_type: {
+          type: 'string',
+          enum: ['business', 'creator'],
+          description: 'Optional; if provided, must match stored user type',
+        },
+      },
+      required: ['email', 'password'],
+    },
+  })
   @ApiOperation({ summary: 'Refresh access token' })
   @ApiResponse({
     status: 200,
@@ -310,11 +326,9 @@ For business users, you can update: company_name, business_email, phone, website
           business_email: 'biz@acme.com',
           phone: '+995 555 111111',
           website_url: 'https://acme.com',
-          logo_url: 'https://img.example/logo.png',
           description: 'We do things',
           legal_status: 'StartupLLC',
           location: 'Tbilisi',
-          business_cover_image_url: 'https://img.example/cover.png',
           business_industry_name: 'Marketing',
           business_tags: [9, 10],
         },
