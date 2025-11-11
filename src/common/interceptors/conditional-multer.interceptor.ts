@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { Observable, from } from 'rxjs';
 import { diskStorage } from 'multer';
-import * as multer from 'multer';
+import multerImport from 'multer';
 import { join, extname } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 
@@ -35,7 +35,9 @@ export class ConditionalMulterInterceptor implements NestInterceptor {
   private readonly upload: any;
 
   constructor() {
-    this.upload = multer({
+    const multerFn: any =
+      (multerImport as any)?.default || (multerImport as any);
+    this.upload = multerFn({
       storage: diskStorage({
         destination: (_req, _file, cb) => cb(null, ensureUploadsDir()),
         filename: (_req, file, cb) =>
