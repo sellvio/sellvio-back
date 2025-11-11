@@ -133,9 +133,12 @@ async function bootstrap() {
   });
 
   // Serve uploaded files statically
+  const uploadsBaseDir =
+    process.env.UPLOADS_DIR ||
+    (process.env.VERCEL ? '/tmp/uploads' : join(process.cwd(), 'uploads'));
   expressApp.use(
     '/uploads',
-    express.static(join(process.cwd(), 'uploads'), {
+    express.static(uploadsBaseDir, {
       maxAge: '7d',
       index: false,
       redirect: false,

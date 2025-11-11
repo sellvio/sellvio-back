@@ -7,12 +7,18 @@ import {
 } from '@nestjs/common';
 import { Observable, from } from 'rxjs';
 import { diskStorage } from 'multer';
-import multerImport from 'multer';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { join, extname } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 
+function getBaseUploadsDir(): string {
+  if (process.env.UPLOADS_DIR) return process.env.UPLOADS_DIR;
+  if (process.env.VERCEL) return '/tmp/uploads';
+  return join(process.cwd(), 'uploads');
+}
+
 function ensureUploadsDir(): string {
-  const baseDir = join(process.cwd(), 'uploads');
+  const baseDir = getBaseUploadsDir();
   if (!existsSync(baseDir)) {
     mkdirSync(baseDir, { recursive: true });
   }
@@ -32,18 +38,24 @@ function generateFileName(originalName: string): string {
 
 @Injectable()
 export class ConditionalMulterInterceptor implements NestInterceptor {
-  private readonly upload: any;
+  constructor() {}
 
-  constructor() {
-    const multerFn: any =
-      (multerImport as any)?.default || (multerImport as any);
-    this.upload = multerFn({
+  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+    const ctx = context.switchToHttp();
+    const req = ctx.getRequest();
+    const res = ctx.getResponse();
+    const contentType = (req.headers['content-type'] || '').toString();
+    if (!contentType.includes('multipart/form-data')) {
+      return next.handle();
+    }
+    const options = {
       storage: diskStorage({
-        destination: (_req, _file, cb) => cb(null, ensureUploadsDir()),
-        filename: (_req, file, cb) =>
+        destination: (_req: any, _file: any, cb: any) =>
+          cb(null, ensureUploadsDir()),
+        filename: (_req: any, file: any, cb: any) =>
           cb(null, generateFileName(file.originalname)),
       }),
-      fileFilter: (_req, file, cb) => {
+      fileFilter: (_req: any, file: any, cb: any) => {
         const allowed = [
           'image/png',
           'image/jpeg',
@@ -60,31 +72,19 @@ export class ConditionalMulterInterceptor implements NestInterceptor {
         cb(null, true);
       },
       limits: { fileSize: 10 * 1024 * 1024 },
-    }).fields([
-      { name: 'profile_image_url', maxCount: 1 },
-      { name: 'logo_url', maxCount: 1 },
-      { name: 'business_cover_image_url', maxCount: 1 },
-    ]);
-  }
-
-  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
-    const ctx = context.switchToHttp();
-    const req = ctx.getRequest();
-    const res = ctx.getResponse();
-    const contentType = (req.headers['content-type'] || '').toString();
-    if (!contentType.includes('multipart/form-data')) {
-      return next.handle();
-    }
-    return from(
-      new Promise<void>((resolve, reject) => {
-        this.upload(req, res, (err: any) => {
-          if (err) {
-            reject(err);
-          } else {
-            resolve();
-          }
-        });
-      }).then(() => next.handle().toPromise()),
-    );
+    } as const;
+    const InterceptorClass = FileFieldsInterceptor(
+      [
+        { name: 'profile_image_url', maxCount: 1 },
+        { name: 'logo_url', maxCount: 1 },
+        { name: 'business_cover_image_url', maxCount: 1 },
+      ],
+      options as any,
+    ) as unknown as new () => NestInterceptor;
+    const inner = new InterceptorClass();
+    return (inner as unknown as NestInterceptor).intercept(
+      context,
+      next,
+    ) as any;
   }
 }

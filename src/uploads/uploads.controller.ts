@@ -17,8 +17,14 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 
+function getBaseUploadsDir(): string {
+  if (process.env.UPLOADS_DIR) return process.env.UPLOADS_DIR;
+  if (process.env.VERCEL) return '/tmp/uploads';
+  return join(process.cwd(), 'uploads');
+}
+
 function ensureUploadsDir(): string {
-  const baseDir = join(process.cwd(), 'uploads');
+  const baseDir = getBaseUploadsDir();
   if (!existsSync(baseDir)) {
     mkdirSync(baseDir, { recursive: true });
   }
