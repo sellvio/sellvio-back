@@ -6,6 +6,9 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  UploadedFiles,
+  UseInterceptors,
+  BadRequestException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -13,6 +16,7 @@ import {
   ApiResponse,
   ApiBearerAuth,
   ApiBody,
+  ApiConsumes,
 } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
@@ -30,6 +34,28 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequestUser } from '../common/interfaces/request-user.interface';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { Patch, Put } from '@nestjs/common';
+import { ConditionalMulterInterceptor } from '../common/interceptors/conditional-multer.interceptor';
+import { extname, join } from 'path';
+import { existsSync, mkdirSync } from 'fs';
+
+function ensureUploadsDir(): string {
+  const baseDir = join(process.cwd(), 'uploads');
+  if (!existsSync(baseDir)) {
+    mkdirSync(baseDir, { recursive: true });
+  }
+  const imagesDir = join(baseDir, 'images');
+  if (!existsSync(imagesDir)) {
+    mkdirSync(imagesDir, { recursive: true });
+  }
+  return imagesDir;
+}
+
+function generateFileName(originalName: string): string {
+  const timestamp = Date.now();
+  const random = Math.round(Math.random() * 1e9);
+  const extension = extname(originalName).toLowerCase();
+  return `img_${timestamp}_${random}${extension}`;
+}
 
 @ApiTags('Authentication')
 @Controller('auth')
@@ -299,47 +325,76 @@ For business users, you can update: company_name, business_email, phone, website
   @ApiBearerAuth('JWT-auth')
   @UseGuards(JwtAuthGuard)
   @ApiBody({
-    description: 'Edit profile body. Provide only fields you want to update.',
-    examples: {
-      Creator: {
-        summary: 'Creator update example',
-        value: {
-          first_name: 'John',
-          last_name: 'Doe',
-          nickname: 'johnny',
-          creator_type: 'beginner',
-          bio: 'I make content',
-          profile_image_url: 'https://img.example/p.jpg',
-          location: 'Tbilisi',
-          phone: '+995 555 000000',
-          date_of_birth: '1999-01-01T00:00:00.000Z',
-          tags: [1, 3],
-          social_media_account: [
-            { platform: 'tiktok', profile_url: 'https://tiktok.com/@john' },
-          ],
-        },
-      },
-      Business: {
-        summary: 'Business update example',
-        value: {
-          company_name: 'Acme Corp',
-          business_email: 'biz@acme.com',
-          phone: '+995 555 111111',
-          website_url: 'https://acme.com',
-          description: 'We do things',
-          legal_status: 'StartupLLC',
-          location: 'Tbilisi',
-          business_industry_name: 'Marketing',
-          business_tags: [9, 10],
+    description:
+      'Edit profile with optional images. Send text fields as form fields. For files, use fields: profile_image (creator→profile_image_url, business→logo_url) and cover_image (business→business_cover_image_url). To delete values of optional fields, provide clear_fields as a string array of field names to clear.',
+    schema: {
+      type: 'object',
+      properties: {
+        first_name: { type: 'string' },
+        last_name: { type: 'string' },
+        nickname: { type: 'string' },
+        bio: { type: 'string' },
+        location: { type: 'string' },
+        phone: { type: 'string' },
+        date_of_birth: { type: 'string', format: 'date-time' },
+        company_name: { type: 'string' },
+        business_email: { type: 'string' },
+        website_url: { type: 'string' },
+        description: { type: 'string' },
+        legal_status: { type: 'string' },
+        business_industry_name: { type: 'string' },
+        business_employee_range: { type: 'string' },
+        business_tags: { type: 'array', items: { type: 'number' } },
+        // Creator tags
+        tags: { type: 'array', items: { type: 'number' } },
+        // Upload files using DB-field names
+        profile_image_url: { type: 'string', format: 'binary' },
+        logo_url: { type: 'string', format: 'binary' },
+        business_cover_image_url: { type: 'string', format: 'binary' },
+        clear_fields: {
+          type: 'array',
+          items: { type: 'string' },
+          example: ['profile_image_url', 'business_cover_image_url'],
         },
       },
     },
   })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(ConditionalMulterInterceptor)
   @Patch('profile')
   async updateProfile(
     @CurrentUser() user: RequestUser,
     @Body() dto: UpdateProfileDto,
+    @UploadedFiles()
+    files?: {
+      profile_image_url?: any[];
+      logo_url?: any[];
+      business_cover_image_url?: any[];
+    },
   ) {
+    const dbProfileFile = files?.profile_image_url?.[0];
+    const dbLogoFile = files?.logo_url?.[0];
+    const dbCoverFile = files?.business_cover_image_url?.[0];
+
+    // Map uploaded image files to DB URL fields by user type
+    if (user.user_type === 'creator') {
+      const effectiveProfileFile = dbProfileFile;
+      if (effectiveProfileFile) {
+        const url = `/uploads/images/${effectiveProfileFile.filename}`;
+        (dto as any).profile_image_url = url;
+      }
+    } else {
+      const effectiveLogoFile = dbLogoFile;
+      if (effectiveLogoFile) {
+        const url = `/uploads/images/${effectiveLogoFile.filename}`;
+        (dto as any).logo_url = url;
+      }
+      const effectiveCoverFile = dbCoverFile;
+      if (effectiveCoverFile) {
+        const url = `/uploads/images/${effectiveCoverFile.filename}`;
+        (dto as any).business_cover_image_url = url;
+      }
+    }
     return this.authService.updateProfile(user.id, dto);
   }
 

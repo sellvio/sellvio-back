@@ -15,6 +15,7 @@ import {
   MinLength,
   ValidateIf,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class UpdateProfileDto {
   @ApiPropertyOptional({
@@ -79,6 +80,31 @@ export class UpdateProfileDto {
   })
   @IsOptional()
   @IsArray()
+  @Transform(({ value }) => {
+    if (value === undefined || value === null) return undefined;
+    if (Array.isArray(value))
+      return value.map((v) => Number(v)).filter((v) => !isNaN(v));
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return undefined;
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed))
+          return parsed
+            .map((v: any) => Number(v))
+            .filter((v: number) => !isNaN(v));
+      } catch {
+        // fallback CSV
+        return trimmed
+          .split(',')
+          .map((s) => Number(s.trim()))
+          .filter((n) => !isNaN(n));
+      }
+      return undefined;
+    }
+    const n = Number(value);
+    return isNaN(n) ? undefined : [n];
+  })
   tags?: number[];
 
   @ApiPropertyOptional({
@@ -95,6 +121,21 @@ export class UpdateProfileDto {
   })
   @IsOptional()
   @IsArray()
+  @Transform(({ value }) => {
+    if (value === undefined || value === null) return undefined;
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return undefined;
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
+  })
   social_media_account?: { platform: social_platform; profile_url: string }[];
 
   // Business updatable fields
@@ -149,5 +190,42 @@ export class UpdateProfileDto {
   })
   @IsOptional()
   @IsArray()
+  @Transform(({ value }) => {
+    if (value === undefined || value === null) return undefined;
+    if (Array.isArray(value))
+      return value.map((v) => Number(v)).filter((v) => !isNaN(v));
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return undefined;
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed))
+          return parsed
+            .map((v: any) => Number(v))
+            .filter((v: number) => !isNaN(v));
+      } catch {
+        // fallback CSV
+        return trimmed
+          .split(',')
+          .map((s) => Number(s.trim()))
+          .filter((n) => !isNaN(n));
+      }
+      return undefined;
+    }
+    const n = Number(value);
+    return isNaN(n) ? undefined : [n];
+  })
   business_tags?: number[];
+
+  // Utility: explicitly clear optional fields by name
+  @ApiPropertyOptional({
+    description:
+      'List of optional field names to clear (set to null). Example: ["profile_image_url", "logo_url", "business_cover_image_url"]',
+    isArray: true,
+    type: 'string',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  clear_fields?: string[];
 }

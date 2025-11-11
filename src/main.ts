@@ -3,6 +3,9 @@ import { AppModule } from './app.module';
 import helmet from 'helmet';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { join } from 'path';
+import * as express from 'express';
+import { StripEmptyPipe } from './common/pipes/strip-empty.pipe';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -23,6 +26,7 @@ async function bootstrap() {
     optionsSuccessStatus: 204,
   });
   app.useGlobalPipes(
+    new StripEmptyPipe(),
     new ValidationPipe({
       whitelist: true,
       forbidNonWhitelisted: true,
@@ -127,6 +131,19 @@ async function bootstrap() {
   expressApp.get('/api-json', (_req: any, res: any) => {
     res.json(document);
   });
+
+  // Serve uploaded files statically
+  expressApp.use(
+    '/uploads',
+    express.static(join(process.cwd(), 'uploads'), {
+      maxAge: '7d',
+      index: false,
+      redirect: false,
+      setHeaders: (res: any) => {
+        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      },
+    }),
+  );
 
   // Serve a minimal Swagger UI HTML that loads assets from CDN
   expressApp.get('/api/docs', (_req: any, res: any) => {

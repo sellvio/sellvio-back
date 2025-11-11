@@ -350,6 +350,16 @@ export class AuthService {
             location: true,
             phone: true,
             date_of_birth: true,
+            creator_tags: {
+              select: {
+                tag_id: true,
+                tags: {
+                  select: {
+                    name: true,
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -373,8 +383,20 @@ export class AuthService {
     }
 
     await this.prisma.$transaction(async (tx) => {
+      const clearFields = new Set(
+        (dto.clear_fields || []).map((f) => String(f).trim()),
+      );
       if (user.user_type === user_type.creator) {
         const creatorData: any = {};
+        // Apply explicit clears first
+        if (clearFields.has('profile_image_url'))
+          creatorData.profile_image_url = null;
+        if (clearFields.has('bio')) creatorData.bio = null;
+        if (clearFields.has('nickname')) creatorData.nickname = null;
+        if (clearFields.has('location')) creatorData.location = null;
+        if (clearFields.has('phone')) creatorData.phone = null;
+        if (clearFields.has('date_of_birth')) creatorData.date_of_birth = null;
+
         if (dto.first_name !== undefined)
           creatorData.first_name = dto.first_name;
         if (dto.last_name !== undefined) creatorData.last_name = dto.last_name;
@@ -389,6 +411,7 @@ export class AuthService {
         if (dto.date_of_birth !== undefined)
           creatorData.date_of_birth = dto.date_of_birth as any;
 
+        console.log(creatorData);
         if (Object.keys(creatorData).length > 0) {
           await tx.creator_profiles.update({
             where: { user_id: userId },
@@ -426,6 +449,21 @@ export class AuthService {
         }
       } else if (user.user_type === user_type.business) {
         const businessData: any = {};
+        // Apply explicit clears first (only optional/nullable fields)
+        if (clearFields.has('logo_url')) businessData.logo_url = null;
+        if (clearFields.has('business_cover_image_url'))
+          businessData.business_cover_image_url = null;
+        if (clearFields.has('website_url')) businessData.website_url = null;
+        if (clearFields.has('description')) businessData.description = null;
+        if (clearFields.has('location')) businessData.location = null;
+        if (clearFields.has('phone')) businessData.phone = null;
+        if (clearFields.has('business_industry_name'))
+          businessData.business_industry_name = null;
+        if (clearFields.has('business_email'))
+          businessData.business_email = null;
+        if (clearFields.has('business_employee_range'))
+          businessData.business_employee_range = null;
+
         if (dto.company_name !== undefined)
           businessData.company_name = dto.company_name;
         if (dto.business_email !== undefined)
@@ -445,8 +483,7 @@ export class AuthService {
           businessData.business_industry_name =
             dto.business_industry_name as business_industry;
 
-        console.log(dto.business_employee_range);
-        if (dto.business_employee_range)
+        if (dto.business_employee_range !== undefined)
           businessData.business_employee_range = dto.business_employee_range;
 
         if (Object.keys(businessData).length > 0) {

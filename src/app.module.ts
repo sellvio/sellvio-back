@@ -16,6 +16,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { EmailModule } from './email/email.module';
 import { EnumsController } from './common/enums.controller';
+import { UploadsModule } from './uploads/uploads.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { EnumsController } from './common/enums.controller';
     SocialMediaModule,
     AdminModule,
     EmailModule,
+    UploadsModule,
   ],
   controllers: [AppController, EnumsController],
   providers: [
