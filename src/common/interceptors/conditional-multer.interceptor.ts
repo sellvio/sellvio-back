@@ -6,9 +6,10 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
-import * as multer from 'multer';
+import * as multerNs from 'multer';
 import { extname } from 'path';
 import { uploadImageBuffer } from '../../helpers/cloudinary.helper';
+const multer = ((multerNs as any)?.default ?? (multerNs as any)) as any;
 
 function generateFileName(originalName: string): string {
   const timestamp = Date.now();
