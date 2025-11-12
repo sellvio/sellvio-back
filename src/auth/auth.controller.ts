@@ -111,66 +111,7 @@ export class AuthController {
       },
     },
   })
-  @ApiBody({
-    description: 'Register body (example shown for a creator user)',
-    schema: {
-      type: 'object',
-      properties: {
-        email: { type: 'string', example: 'user@example.com' },
-        password: { type: 'string', example: 'very-strong-password' },
-        user_type: { type: 'string', example: 'creator' },
-        creator_type: { type: 'string', example: 'beginner' },
-        first_name: { type: 'string', example: 'John' },
-        last_name: { type: 'string', example: 'Doe' },
-        nickname: { type: 'string', example: 'johnd' },
-        date_of_birth: {
-          type: 'string',
-          format: 'date-time',
-          example: '1999-01-01T00:00:00.000Z',
-        },
-        tags: { type: 'array', items: { type: 'number' }, example: [1, 2, 3] },
-        social_media_account: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              platform: { type: 'string', example: 'tiktok' },
-              profile_url: {
-                type: 'string',
-                example: 'https://tiktok.com/@your_handle',
-              },
-            },
-            required: ['platform', 'profile_url'],
-          },
-          example: [
-            {
-              platform: 'tiktok',
-              profile_url: 'https://tiktok.com/@your_handle',
-            },
-          ],
-        },
-        location: { type: 'string', example: 'Tbilisi' },
-        // Business-only optional fields if user_type is business
-        company_name: { type: 'string', example: 'Acme Corp' },
-        legal_status: { type: 'string', example: 'StartupLLC' },
-        website_url: { type: 'string', example: 'https://acme.example' },
-        business_email: { type: 'string', example: 'contact@acme.example' },
-        phone: { type: 'string', example: '+995 555 123456' },
-        logo_url: { type: 'string', example: 'https://img.example/logo.png' },
-        business_cover_image_url: {
-          type: 'string',
-          example: 'https://img.example/cover.png',
-        },
-        business_industry_name: { type: 'string', example: 'Marketing' },
-        business_tags: {
-          type: 'array',
-          items: { type: 'number' },
-          example: [9, 10],
-        },
-      },
-      required: ['email', 'password', 'user_type'],
-    },
-  })
+  @ApiBody({ description: 'Register body', type: RegisterDto })
   @Post('register')
   async register(@Body() registerDto: RegisterDto) {
     return this.authService.register(registerDto);

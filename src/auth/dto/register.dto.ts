@@ -32,12 +32,6 @@ export class RegisterDto {
   @IsEnum(user_type)
   user_type!: user_type;
 
-  // Creator fields (optional if user_type is CREATOR)
-  @ApiPropertyOptional({ enum: Object.values(creator_type) })
-  @IsOptional()
-  @IsEnum(creator_type)
-  creator_type?: creator_type;
-
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
@@ -60,27 +54,18 @@ export class RegisterDto {
   @IsDate()
   date_of_birth?: Date;
 
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsArray()
-  tags?: number[];
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsArray()
-  social_media_account?: { platform: social_platform; profile_url: string }[];
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  location?: string;
-
   // Business fields (optional if user_type is BUSINESS)
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   @MinLength(2)
   company_name?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  company_nickName?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -102,21 +87,6 @@ export class RegisterDto {
   @IsOptional()
   @IsString()
   phone?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  logo_url?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  business_cover_image_url?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  business_industry_name?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

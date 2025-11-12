@@ -56,9 +56,15 @@ export class AuthService {
 
       // Create appropriate profile
       if (userType === user_type.business) {
-        if (!profileData.company_name) {
+        if (
+          !profileData.company_name ||
+          !profileData.company_nickName ||
+          !profileData.legal_status ||
+          !profileData.business_email ||
+          !profileData.phone
+        ) {
           throw new BadRequestException(
-            'Company name is required for business accounts',
+            'Company name, company nickname, legal status, business email and phone are required for business accounts',
           );
         }
 
@@ -69,10 +75,8 @@ export class AuthService {
             business_email: profileData.business_email,
             phone: profileData.phone,
             website_url: profileData.website_url,
-            logo_url: profileData.logo_url,
-            business_cover_image_url: profileData.business_cover_image_url,
             legal_status: profileData.legal_status as legal_status,
-            location: profileData.location,
+            company_nickName: profileData.company_nickName,
           },
         });
 
@@ -97,10 +101,11 @@ export class AuthService {
         if (
           !profileData.first_name ||
           !profileData.last_name ||
-          !profileData.location
+          !profileData.nickname ||
+          !profileData.date_of_birth
         ) {
           throw new BadRequestException(
-            'First name, last name, and location are required for creator accounts',
+            'Email, Password, User Type, First name, last name, nickname and date of birth are required for creator accounts',
           );
         }
 
@@ -110,30 +115,9 @@ export class AuthService {
             first_name: profileData.first_name,
             last_name: profileData.last_name,
             nickname: profileData.nickname,
-            creator_type: profileData.creator_type,
-            location: profileData.location,
-            phone: profileData.phone,
+            date_of_birth: profileData.date_of_birth,
           },
         });
-
-        if (profileData.social_media_account) {
-          await tx.social_media_accounts.createMany({
-            data: profileData.social_media_account.map((account) => ({
-              creator_id: user.id,
-              platform: account.platform,
-              profile_url: account.profile_url,
-            })),
-          });
-        }
-
-        if (profileData.tags) {
-          await tx.creator_tags.createMany({
-            data: profileData.tags.map((tag) => ({
-              creator_id: user.id,
-              tag_id: Number(tag),
-            })),
-          });
-        }
 
         // Create default creator account
         await tx.creator_accounts.create({
