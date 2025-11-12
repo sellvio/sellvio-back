@@ -380,18 +380,24 @@ For business users, you can update: company_name, business_email, phone, website
     if (user.user_type === 'creator') {
       const effectiveProfileFile = dbProfileFile;
       if (effectiveProfileFile) {
-        const url = `/uploads/images/${effectiveProfileFile.filename}`;
+        const url =
+          (effectiveProfileFile as any).cloudinaryUrl ??
+          `/uploads/images/${effectiveProfileFile.filename}`;
         (dto as any).profile_image_url = url;
       }
     } else {
       const effectiveLogoFile = dbLogoFile;
       if (effectiveLogoFile) {
-        const url = `/uploads/images/${effectiveLogoFile.filename}`;
+        const url =
+          (effectiveLogoFile as any).cloudinaryUrl ??
+          `/uploads/images/${effectiveLogoFile.filename}`;
         (dto as any).logo_url = url;
       }
       const effectiveCoverFile = dbCoverFile;
       if (effectiveCoverFile) {
-        const url = `/uploads/images/${effectiveCoverFile.filename}`;
+        const url =
+          (effectiveCoverFile as any).cloudinaryUrl ??
+          `/uploads/images/${effectiveCoverFile.filename}`;
         (dto as any).business_cover_image_url = url;
       }
     }

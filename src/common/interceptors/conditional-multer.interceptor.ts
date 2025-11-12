@@ -5,29 +5,10 @@ import {
   NestInterceptor,
   BadRequestException,
 } from '@nestjs/common';
-import { Observable, from } from 'rxjs';
-import { diskStorage } from 'multer';
-import { FileFieldsInterceptor } from '@nestjs/platform-express';
-import { join, extname } from 'path';
-import { existsSync, mkdirSync } from 'fs';
-
-function getBaseUploadsDir(): string {
-  if (process.env.UPLOADS_DIR) return process.env.UPLOADS_DIR;
-  if (process.env.VERCEL) return '/tmp/uploads';
-  return join(process.cwd(), 'uploads');
-}
-
-function ensureUploadsDir(): string {
-  const baseDir = getBaseUploadsDir();
-  if (!existsSync(baseDir)) {
-    mkdirSync(baseDir, { recursive: true });
-  }
-  const imagesDir = join(baseDir, 'images');
-  if (!existsSync(imagesDir)) {
-    mkdirSync(imagesDir, { recursive: true });
-  }
-  return imagesDir;
-}
+import { Observable } from 'rxjs';
+import * as multer from 'multer';
+import { extname } from 'path';
+import { uploadImageBuffer } from '../../helpers/cloudinary.helper';
 
 function generateFileName(originalName: string): string {
   const timestamp = Date.now();
@@ -48,21 +29,17 @@ export class ConditionalMulterInterceptor implements NestInterceptor {
     if (!contentType.includes('multipart/form-data')) {
       return next.handle();
     }
-    const options = {
-      storage: diskStorage({
-        destination: (_req: any, _file: any, cb: any) =>
-          cb(null, ensureUploadsDir()),
-        filename: (_req: any, file: any, cb: any) =>
-          cb(null, generateFileName(file.originalname)),
-      }),
+    const allowed = [
+      'image/png',
+      'image/jpeg',
+      'image/jpg',
+      'image/webp',
+      'image/gif',
+    ];
+    const upload = multer({
+      storage: multer.memoryStorage(),
+      limits: { fileSize: 10 * 1024 * 1024 },
       fileFilter: (_req: any, file: any, cb: any) => {
-        const allowed = [
-          'image/png',
-          'image/jpeg',
-          'image/jpg',
-          'image/webp',
-          'image/gif',
-        ];
         if (!allowed.includes(file.mimetype)) {
           return cb(
             new BadRequestException('Only image files are allowed'),
@@ -71,20 +48,53 @@ export class ConditionalMulterInterceptor implements NestInterceptor {
         }
         cb(null, true);
       },
-      limits: { fileSize: 10 * 1024 * 1024 },
-    } as const;
-    const InterceptorClass = FileFieldsInterceptor(
-      [
-        { name: 'profile_image_url', maxCount: 1 },
-        { name: 'logo_url', maxCount: 1 },
-        { name: 'business_cover_image_url', maxCount: 1 },
-      ],
-      options as any,
-    ) as unknown as new () => NestInterceptor;
-    const inner = new InterceptorClass();
-    return (inner as unknown as NestInterceptor).intercept(
-      context,
-      next,
-    ) as any;
+    }).fields([
+      { name: 'profile_image_url', maxCount: 1 },
+      { name: 'logo_url', maxCount: 1 },
+      { name: 'business_cover_image_url', maxCount: 1 },
+    ]);
+
+    return new Observable((subscriber) => {
+      upload(req, res, async (err: any) => {
+        if (err) {
+          subscriber.error(
+            err instanceof Error
+              ? err
+              : new BadRequestException('File upload failed'),
+          );
+          return;
+        }
+        try {
+          const files = (req.files || {}) as Record<string, Array<any>>;
+          const fieldNames = [
+            'profile_image_url',
+            'logo_url',
+            'business_cover_image_url',
+          ] as const;
+          for (const field of fieldNames) {
+            const f = files[field]?.[0];
+            if (f && f.buffer) {
+              const filename = generateFileName(f.originalname);
+              const { secureUrl, publicId } = await uploadImageBuffer(
+                f.buffer,
+                filename,
+                'sellvio/images',
+              );
+              // Attach Cloudinary info for downstream usage
+              (f as any).cloudinaryUrl = secureUrl;
+              (f as any).cloudinaryPublicId = publicId;
+            }
+          }
+          // Proceed to next handler
+          next.handle().subscribe({
+            next: (value) => subscriber.next(value),
+            error: (e) => subscriber.error(e),
+            complete: () => subscriber.complete(),
+          });
+        } catch (e) {
+          subscriber.error(e);
+        }
+      });
+    });
   }
 }
