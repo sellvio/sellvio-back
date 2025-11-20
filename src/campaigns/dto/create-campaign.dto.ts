@@ -10,7 +10,7 @@ import {
   MinLength,
   IsDecimal,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   campaign_status,
@@ -63,6 +63,24 @@ export class CreateCampaignDto {
 
   @ApiProperty({ enum: creator_type, isArray: true })
   @IsArray()
+  @Transform(({ value }) => {
+    if (value === undefined || value === null) return undefined;
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return undefined;
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {
+        return trimmed
+          .split(',')
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0);
+      }
+    }
+    return [String(value)];
+  })
   @IsEnum(creator_type, { each: true })
   target_creator_types: creator_type[];
 
@@ -103,6 +121,24 @@ export class CreateCampaignDto {
   @ApiPropertyOptional({ enum: social_platform, isArray: true })
   @IsOptional()
   @IsArray()
+  @Transform(({ value }) => {
+    if (value === undefined || value === null) return undefined;
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return undefined;
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {
+        return trimmed
+          .split(',')
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0);
+      }
+    }
+    return [String(value)];
+  })
   @IsEnum(social_platform, { each: true })
   platforms?: social_platform[];
 
@@ -110,6 +146,24 @@ export class CreateCampaignDto {
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
+  @Transform(({ value }) => {
+    if (value === undefined || value === null) return undefined;
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return undefined;
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) return parsed.map((v: any) => String(v));
+      } catch {
+        return trimmed
+          .split(',')
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0);
+      }
+    }
+    return [String(value)];
+  })
   tags?: string[];
 
   @ApiPropertyOptional({
@@ -127,5 +181,23 @@ export class CreateCampaignDto {
   })
   @IsOptional()
   @IsArray()
+  @Transform(({ value }) => {
+    if (value === undefined || value === null) return undefined;
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return undefined;
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {
+        if (/^https?:\/\//i.test(trimmed)) {
+          return [{ name: 'Link', url: trimmed, type: 'link' }];
+        }
+        return undefined;
+      }
+    }
+    return undefined;
+  })
   media?: { name: string; url: string; type?: string }[];
 }

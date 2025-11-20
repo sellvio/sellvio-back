@@ -49,3 +49,32 @@ export async function uploadImageBuffer(
     uploadStream.end(buffer);
   });
 }
+
+export async function uploadVideoBuffer(
+  buffer: Buffer,
+  filename?: string,
+  folder: string = 'sellvio/videos',
+): Promise<{ secureUrl: string; publicId: string }> {
+  ensureConfigured();
+  const publicIdBase =
+    filename?.replace(/\.[a-zA-Z0-9]+$/, '') || `vid_${Date.now()}`;
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        folder,
+        public_id: publicIdBase,
+        resource_type: 'video',
+        overwrite: true,
+      },
+      (error, result) => {
+        if (error || !result) {
+          return reject(
+            error || new Error('Cloudinary upload failed without error'),
+          );
+        }
+        resolve({ secureUrl: result.secure_url, publicId: result.public_id });
+      },
+    );
+    uploadStream.end(buffer);
+  });
+}

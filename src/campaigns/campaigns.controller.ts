@@ -9,6 +9,7 @@ import {
   UseGuards,
   Query,
   ParseIntPipe,
+  UploadedFiles,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -18,6 +19,7 @@ import {
   ApiQuery,
   ApiParam,
   ApiBody,
+  ApiConsumes,
 } from '@nestjs/swagger';
 import { CampaignsService } from './campaigns.service';
 import { CreateCampaignDto } from './dto/create-campaign.dto';
@@ -34,6 +36,8 @@ import {
   campaign_status,
   participation_status,
 } from '@prisma/client';
+import { CampaignAssetsMulterInterceptor } from '../common/interceptors/campaign-assets.interceptor';
+import { UseInterceptors } from '@nestjs/common';
 import {
   CampaignResponseDto,
   CampaignWithDetailsDto,
@@ -100,45 +104,140 @@ export class CampaignsController {
   @UseGuards(RolesGuard)
   @Roles(user_type.business)
   @Post()
+  @ApiConsumes('multipart/form-data')
   @ApiBody({
-    description: 'Create campaign body',
-    examples: {
-      Full: {
-        summary: 'All fields example',
-        value: {
-          name: 'Summer Collection Campaign',
-          description: 'Promote our new summer collection',
-          budget: 1000.0,
-          budget_hidden: false,
-          duration_days: 30,
-          status: 'draft',
-          chat_type: 'public',
-          target_creator_types: ['beginner', 'influencer'],
-          additional_requirements: 'Must have experience with beauty products',
-          payment_type: 'cost_per_view',
-          payment_amount: 50.0,
-          payment_per_quantity: 1000,
-          requirements: 'Create engaging 30-second videos',
-          target_audience: 'Young adults aged 18-35',
-          campaign_image_url: 'https://example.com/image.jpg',
-          platforms: ['instagram', 'tiktok'],
-          tags: ['fashion', 'summer'],
-          media: [
-            {
-              name: 'Banner Image',
-              url: 'https://example.com/banner.jpg',
-              type: 'image',
-            },
+    description:
+      'Create campaign via multipart form-data only. For file uploads, use asset_files (multiple). For link assets, use media[] as a JSON string.',
+    schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', example: 'Summer Collection Campaign' },
+        description: {
+          type: 'string',
+          example: 'Promote our new summer collection',
+        },
+        budget: { type: 'number', example: 1000.0 },
+        budget_hidden: { type: 'boolean', example: false },
+        duration_days: { type: 'number', example: 30, minimum: 1 },
+        status: {
+          type: 'string',
+          enum: ['draft', 'active', 'completed'],
+          example: 'draft',
+        },
+        chat_type: {
+          type: 'string',
+          enum: ['public', 'private'],
+          example: 'public',
+        },
+        target_creator_types: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: ['beginner', 'experienced', 'influencer', 'clipper'],
+          },
+          example: ['beginner', 'influencer'],
+        },
+        additional_requirements: {
+          type: 'string',
+          example: 'Must have experience with beauty products',
+        },
+        payment_type: {
+          type: 'string',
+          enum: [
+            'cost_per_view',
+            'cost_per_click',
+            'cost_per_engagement',
+            'cost_per_reach',
           ],
+          example: 'cost_per_view',
+        },
+        payment_amount: { type: 'number', example: 50.0 },
+        payment_per_quantity: { type: 'number', example: 1000 },
+        requirements: {
+          type: 'string',
+          example: 'Create engaging 30-second videos',
+        },
+        target_audience: {
+          type: 'string',
+          example: 'Young adults aged 18-35',
+        },
+        campaign_image_url: {
+          type: 'string',
+          format: 'binary',
+        },
+        platforms: {
+          type: 'array',
+          items: { type: 'string', enum: ['instagram', 'tiktok', 'facebook'] },
+          example: ['instagram', 'tiktok'],
+        },
+        tags: {
+          type: 'array',
+          items: { type: 'string' },
+          example: ['fashion', 'summer'],
+        },
+        media: {
+          description: 'Link assets. In multipart, pass this as a JSON string.',
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', example: 'Brand Site' },
+              url: { type: 'string', example: 'https://example.com' },
+              type: { type: 'string', example: 'link' },
+            },
+            required: ['name', 'url'],
+          },
+        },
+        asset_files: {
+          description:
+            'Upload multiple files (images/videos). In Postman, add multiple file parts under "asset_files".',
+          type: 'array',
+          items: { type: 'string', format: 'binary' },
         },
       },
+      required: [
+        'name',
+        'budget',
+        'duration_days',
+        'payment_type',
+        'payment_amount',
+        'payment_per_quantity',
+        'requirements',
+        'target_creator_types',
+      ],
     },
   })
+  @UseInterceptors(CampaignAssetsMulterInterceptor)
   create(
     @Body() createCampaignDto: CreateCampaignDto,
     @CurrentUser() user: RequestUser,
+    @UploadedFiles() files?: Record<string, Array<any>>,
   ) {
-    return this.campaignsService.create(user.id, createCampaignDto);
+    const uploaded = (files?.['asset_files'] || []).map((f) => {
+      const original = String(f.originalname || '');
+      const extMatch = original.toLowerCase().match(/\.([a-z0-9]+)$/);
+      const ext =
+        (extMatch && extMatch[1]) ||
+        (String(f.mimetype || '').split('/')[1] || '').toLowerCase() ||
+        'file';
+      return {
+        name: original || `asset_${Date.now()}`,
+        url: (f as any).cloudinaryUrl as string,
+        type: ext, // e.g., 'jpg', 'png', 'mp4'
+      };
+    });
+    // Map uploaded campaign_image_url file to DTO if provided
+    const cover = files?.['campaign_image_url']?.[0];
+    if (cover) {
+      const url =
+        (cover as any).cloudinaryUrl ?? `/uploads/images/${cover.filename}`;
+      (createCampaignDto as any).campaign_image_url = url;
+    }
+    const dtoWithAssets = {
+      ...(createCampaignDto as any),
+      uploaded_assets: uploaded,
+    };
+    return this.campaignsService.create(user.id, dtoWithAssets as any);
   }
 
   @ApiOperation({

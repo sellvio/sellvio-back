@@ -18,8 +18,15 @@ import {
 export class CampaignsService {
   constructor(private prisma: PrismaService) {}
 
-  async create(businessId: number, createCampaignDto: CreateCampaignDto) {
-    const { platforms, tags, media, ...rest } = createCampaignDto;
+  async create(
+    businessId: number,
+    createCampaignDto: CreateCampaignDto,
+  ): Promise<any> {
+    const { platforms, tags, media, uploaded_assets, ...rest } =
+      createCampaignDto as any;
+    const uploadedAssets = uploaded_assets as
+      | { name: string; url: string; type: string }[]
+      | undefined;
     const campaignData = { ...rest } as any;
 
     // // Verify user is a business
@@ -75,15 +82,27 @@ export class CampaignsService {
         }
       }
 
-      // Add media assets
-      if (media && media.length > 0) {
+      // Add media assets (links from DTO)
+      const linkAssets =
+        (media || []).map((m) => ({
+          campaign_id: campaign.id,
+          asset_name: m.name,
+          asset_url: m.url,
+          asset_type: 'link',
+        })) || [];
+
+      // Add uploaded assets (files via Cloudinary)
+      const fileAssets =
+        (uploadedAssets || []).map((m) => ({
+          campaign_id: campaign.id,
+          asset_name: m.name,
+          asset_url: m.url,
+          asset_type: m.type, // extension like 'jpg','png','mp4'
+        })) || [];
+
+      if (linkAssets.length + fileAssets.length > 0) {
         await tx.campaign_assets.createMany({
-          data: media.map((m) => ({
-            campaign_id: campaign.id,
-            asset_name: m.name,
-            asset_url: m.url,
-            asset_type: m.type || 'other',
-          })),
+          data: [...linkAssets, ...fileAssets],
         });
       }
 
@@ -191,6 +210,13 @@ export class CampaignsService {
                 name: true,
               },
             },
+          },
+        },
+        campaign_assets: {
+          select: {
+            asset_name: true,
+            asset_url: true,
+            asset_type: true,
           },
         },
         campaign_budget_tracking: true,
