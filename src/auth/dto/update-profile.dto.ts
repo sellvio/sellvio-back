@@ -1,7 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   creator_type,
-  legal_status,
   social_platform,
   user_type,
 } from '@prisma/client';
@@ -10,6 +9,7 @@ import {
   IsDate,
   IsEmail,
   IsEnum,
+  IsInt,
   IsOptional,
   IsString,
   MinLength,
@@ -170,10 +170,10 @@ export class UpdateProfileDto {
   @IsString()
   description?: string;
 
-  @ApiPropertyOptional({ enum: Object.values(legal_status) })
+  @ApiPropertyOptional({ type: Number, description: 'ID from legal_statuses' })
   @IsOptional()
-  @IsEnum(legal_status)
-  legal_status?: legal_status;
+  @IsInt()
+  legal_status_id?: number;
 
   @ApiPropertyOptional()
   @IsOptional()

@@ -16,7 +16,6 @@ import {
   user_type,
   video_status,
   business_industry,
-  legal_status,
 } from '@prisma/client';
 
 @ApiTags('Enums')
@@ -39,7 +38,6 @@ export class EnumsController {
     transaction_type: Object.values(transaction_type),
     video_status: Object.values(video_status),
     business_industry: Object.values(business_industry),
-    legal_status: Object.values(legal_status),
   };
 
   @ApiOperation({ summary: 'Get all enums' })
@@ -72,5 +70,14 @@ export class EnumsController {
   @Get('tags/all')
   async getTags() {
     return this.prisma.tags.findMany({ select: { id: true, name: true } });
+  }
+
+  @ApiOperation({ summary: 'Get all legal statuses' })
+  @ApiResponse({ status: 200, description: 'All legal statuses returned' })
+  @Get('legal-statuses/all')
+  async getLegalStatuses() {
+    return this.prisma.legal_statuses.findMany({
+      orderBy: { id: 'asc' },
+    });
   }
 }

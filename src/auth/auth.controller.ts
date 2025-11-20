@@ -255,7 +255,7 @@ export class AuthController {
 
 For creator users, you can update: first_name, last_name, nickname, creator_type, bio, profile_image_url, location, phone, date_of_birth, tags (replace), and social_media_account (replace).
 
-For business users, you can update: company_name, business_email, phone, website_url, logo_url, description, legal_status, location, business_cover_image_url, business_industry_name, and business_tags (replace).`,
+For business users, you can update: company_name, business_email, phone, website_url, logo_url, description, legal_status_id, location, business_cover_image_url, business_industry_name, and business_tags (replace).`,
   })
   @ApiResponse({
     status: 200,
@@ -282,7 +282,7 @@ For business users, you can update: company_name, business_email, phone, website
         business_email: { type: 'string' },
         website_url: { type: 'string' },
         description: { type: 'string' },
-        legal_status: { type: 'string' },
+        legal_status_id: { type: 'number' },
         business_industry_name: { type: 'string' },
         business_employee_range: { type: 'string' },
         business_tags: { type: 'array', items: { type: 'number' } },

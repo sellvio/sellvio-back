@@ -12,7 +12,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
-import { business_industry, legal_status, user_type } from '@prisma/client';
+import { business_industry, user_type } from '@prisma/client';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 
 @Injectable()
@@ -55,16 +55,25 @@ export class AuthService {
       });
 
       // Create appropriate profile
+      const legalStatus = await this.prisma.legal_statuses.findUnique({
+        where: { id: Number(profileData.legal_status_id) },
+      });
+
+      if (!legalStatus) {
+        throw new BadRequestException('Legal status not found');
+      }
+
       if (userType === user_type.business) {
+        console.log(profileData);
         if (
           !profileData.company_name ||
           !profileData.company_nickName ||
-          !profileData.legal_status ||
+          !profileData.legal_status_id ||
           !profileData.business_email ||
           !profileData.phone
         ) {
           throw new BadRequestException(
-            'Company name, company nickname, legal status, business email and phone are required for business accounts',
+            'Company name, company nickname, legal_status_id, business email and phone are required for business accounts',
           );
         }
 
@@ -75,7 +84,7 @@ export class AuthService {
             business_email: profileData.business_email,
             phone: profileData.phone,
             website_url: profileData.website_url,
-            legal_status: profileData.legal_status as legal_status,
+            legal_status_id: Number(profileData.legal_status_id),
             company_nickName: profileData.company_nickName,
           },
         });
@@ -308,7 +317,14 @@ export class AuthService {
             description: true,
             business_employee_range: true,
             business_cover_image_url: true,
-            legal_status: true,
+            legal_status: {
+              select: {
+                id: true,
+                code: true,
+                name_en: true,
+                name_ka: true,
+              },
+            },
             location: true,
             business_industry_name: true,
             business_tags: {
@@ -458,8 +474,8 @@ export class AuthService {
         if (dto.logo_url !== undefined) businessData.logo_url = dto.logo_url;
         if (dto.description !== undefined)
           businessData.description = dto.description;
-        if (dto.legal_status !== undefined)
-          businessData.legal_status = dto.legal_status as legal_status;
+        if (dto.legal_status_id !== undefined)
+          businessData.legal_status_id = Number(dto.legal_status_id);
         if (dto.location !== undefined) businessData.location = dto.location;
         if (dto.business_cover_image_url !== undefined)
           businessData.business_cover_image_url = dto.business_cover_image_url;

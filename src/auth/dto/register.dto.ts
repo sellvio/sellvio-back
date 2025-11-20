@@ -6,6 +6,7 @@ import {
   IsEmail,
   IsEnum,
   IsOptional,
+  IsInt,
   IsString,
   Length,
   MinLength,
@@ -69,9 +70,8 @@ export class RegisterDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsString()
-  @MinLength(2)
-  legal_status?: string;
+  @IsInt()
+  legal_status_id?: number;
 
   @ApiPropertyOptional()
   @IsOptional()
