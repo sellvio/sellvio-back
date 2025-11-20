@@ -224,6 +224,7 @@ export class CampaignsController {
         name: original || `asset_${Date.now()}`,
         url: (f as any).cloudinaryUrl as string,
         type: ext, // e.g., 'jpg', 'png', 'mp4'
+        size: typeof f.size === 'number' ? f.size : undefined,
       };
     });
     // Map uploaded campaign_image_url file to DTO if provided

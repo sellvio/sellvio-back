@@ -98,6 +98,10 @@ export class CampaignsService {
           asset_name: m.name,
           asset_url: m.url,
           asset_type: m.type, // extension like 'jpg','png','mp4'
+          file_size:
+            (m as any).size !== undefined
+              ? BigInt(Number((m as any).size))
+              : undefined,
         })) || [];
 
       if (linkAssets.length + fileAssets.length > 0) {
