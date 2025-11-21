@@ -54,17 +54,15 @@ export class AuthService {
         },
       });
 
-      // Create appropriate profile
-      const legalStatus = await this.prisma.legal_statuses.findUnique({
-        where: { id: Number(profileData.legal_status_id) },
-      });
-
-      if (!legalStatus) {
-        throw new BadRequestException('Legal status not found');
-      }
-
       if (userType === user_type.business) {
-        console.log(profileData);
+        // Create appropriate profile
+        const legalStatus = await this.prisma.legal_statuses.findUnique({
+          where: { id: Number(profileData.legal_status_id) },
+        });
+
+        if (!legalStatus) {
+          throw new BadRequestException('Legal status not found');
+        }
         if (
           !profileData.company_name ||
           !profileData.company_nickName ||
