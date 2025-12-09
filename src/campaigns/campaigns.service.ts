@@ -12,6 +12,7 @@ import {
   user_type,
   campaign_status,
   participation_status,
+  chat_role_type,
 } from '@prisma/client';
 
 @Injectable()
@@ -263,6 +264,98 @@ export class CampaignsService {
     return campaign;
   }
 
+  async getChatServerByCampaign(campaignId: number, userId: number) {
+    const campaign = await this.prisma.campaigns.findUnique({
+      where: { id: campaignId },
+      select: { id: true, business_id: true },
+    });
+    if (!campaign) {
+      throw new NotFoundException('Campaign not found');
+    }
+
+    const server = await this.prisma.chat_servers.findFirst({
+      where: { campaign_id: campaignId },
+      select: {
+        id: true,
+        campaign_id: true,
+        name: true,
+        description: true,
+        created_at: true,
+      },
+    });
+    if (!server) {
+      throw new NotFoundException('Chat server not found for this campaign');
+    }
+
+    // Determine access level
+    const serverMembership = await this.prisma.chat_memberships.findUnique({
+      where: {
+        chat_server_id_user_id: { chat_server_id: server.id, user_id: userId },
+      },
+      select: { role: true },
+    });
+    const isAdmin =
+      serverMembership?.role === 'admin' || campaign.business_id === userId;
+
+    if (!isAdmin) {
+      // Ensure user is campaign participant (approved) or at least a member of the server
+      const participation = await this.prisma.campaign_participants.findUnique({
+        where: {
+          campaign_id_creator_id: {
+            campaign_id: campaignId,
+            creator_id: userId,
+          },
+        },
+        select: { status: true },
+      });
+      const isApprovedParticipant =
+        participation?.status === participation_status.approved;
+      const isServerMember = !!serverMembership;
+
+      if (!isApprovedParticipant && !isServerMember) {
+        throw new ForbiddenException(
+          'You are not allowed to access this campaign chat server',
+        );
+      }
+    }
+
+    // Fetch channels based on visibility
+    if (isAdmin) {
+      const channels = await this.prisma.chat_channels.findMany({
+        where: { chat_servers_id: server.id },
+        orderBy: { id: 'asc' },
+      });
+      return { ...server, chat_channels: channels };
+    } else {
+      // Non-admin: show public channels and private channels where the user has channel membership
+      // 1) Get all channels for the server
+      const allChannels = (await this.prisma.chat_channels.findMany({
+        where: { chat_servers_id: server.id },
+        orderBy: { id: 'asc' },
+      })) as any[];
+      // 2) Collect private channel IDs
+      const privateChannelIds = allChannels
+        .filter((c) => String(c.channel_state || 'public') === 'private')
+        .map((c) => c.id as number);
+      // 3) Find which private channels the user is member of (raw to avoid client mismatch)
+      const rows = await this.prisma.$queryRaw<{ channel_id: number }[]>`
+          SELECT cm.channel_id
+          FROM public.channel_memberships cm
+          JOIN public.chat_channels cc ON cc.id = cm.channel_id
+          WHERE cm.user_id = ${userId}
+            AND cc.chat_servers_id = ${server.id}
+            AND COALESCE(cc.channel_state, 'public') = 'private'
+        `;
+      const allowedPrivateIds = new Set<number>(rows.map((r) => r.channel_id));
+      // 4) Filter visible channels: all public + allowed private
+      const visible = allChannels.filter((c) => {
+        const isPrivate = String(c.channel_state || 'public') === 'private';
+        return !isPrivate || allowedPrivateIds.has(c.id as number);
+      });
+      return { ...server, chat_channels: visible };
+    }
+  }
+
   async update(
     id: number,
     userId: number,
@@ -404,6 +497,12 @@ export class CampaignsService {
     // Check if campaign exists and is active
     const campaign = await this.prisma.campaigns.findUnique({
       where: { id: campaignId },
+      select: {
+        id: true,
+        status: true,
+        business_id: true,
+        chat_type: true,
+      },
     });
 
     if (!campaign) {
@@ -426,14 +525,34 @@ export class CampaignsService {
       });
 
     if (existingParticipation) {
-      throw new BadRequestException('Already participating in this campaign');
+      if (existingParticipation.status === participation_status.pending) {
+        throw new BadRequestException(
+          'Your participation request is already pending approval',
+        );
+      }
+      if (existingParticipation.status === participation_status.approved) {
+        throw new BadRequestException(
+          'You are already participating in this campaign',
+        );
+      }
+      if (existingParticipation.status === participation_status.rejected) {
+        throw new BadRequestException(
+          'Your participation request was previously rejected',
+        );
+      }
     }
 
+    // For public campaigns, auto-approve; for private, create pending request
+    const isPublic = String(campaign.chat_type || 'public') === 'public';
     const participation = await this.prisma.campaign_participants.create({
       data: {
         campaign_id: campaignId,
         creator_id: creatorId,
-        status: participation_status.pending,
+        status: isPublic
+          ? participation_status.approved
+          : participation_status.pending,
+        approved_at: isPublic ? new Date() : null,
+        approved_by: isPublic ? campaign.business_id : null,
       },
       include: {
         campaigns: {
@@ -443,6 +562,30 @@ export class CampaignsService {
         },
       },
     });
+
+    // If auto-approved (public), ensure server membership exists
+    if (isPublic) {
+      const server = await this.prisma.chat_servers.findFirst({
+        where: { campaign_id: campaignId },
+        select: { id: true },
+      });
+      if (server) {
+        await this.prisma.chat_memberships.upsert({
+          where: {
+            chat_server_id_user_id: {
+              chat_server_id: server.id,
+              user_id: creatorId,
+            },
+          },
+          update: {},
+          create: {
+            chat_server_id: server.id,
+            user_id: creatorId,
+            role: chat_role_type.user,
+          },
+        });
+      }
+    }
 
     return {
       message: 'Successfully applied to participate in campaign',
@@ -511,6 +654,72 @@ export class CampaignsService {
       },
     );
 
+    // If approved now, ensure server membership exists
+    if (status === participation_status.approved) {
+      const server = await this.prisma.chat_servers.findFirst({
+        where: { campaign_id: campaignId },
+        select: { id: true },
+      });
+      if (server) {
+        await this.prisma.chat_memberships.upsert({
+          where: {
+            chat_server_id_user_id: {
+              chat_server_id: server.id,
+              user_id: creatorId,
+            },
+          },
+          update: {},
+          create: {
+            chat_server_id: server.id,
+            user_id: creatorId,
+            role: chat_role_type.user,
+          },
+        });
+      }
+    }
+
     return updatedParticipation;
+  }
+
+  async listParticipationRequests(
+    campaignId: number,
+    businessId: number,
+    status?: participation_status,
+  ) {
+    const campaign = await this.prisma.campaigns.findUnique({
+      where: { id: campaignId },
+      select: { id: true, business_id: true },
+    });
+    if (!campaign) {
+      throw new NotFoundException('Campaign not found');
+    }
+    if (campaign.business_id !== businessId) {
+      throw new ForbiddenException(
+        'You can only view requests for your campaign',
+      );
+    }
+    const where: any = { campaign_id: campaignId };
+    if (status) {
+      where.status = status;
+    }
+    return this.prisma.campaign_participants.findMany({
+      where,
+      orderBy: { applied_at: 'desc' },
+      include: {
+        creator_profiles: {
+          select: {
+            first_name: true,
+            last_name: true,
+            nickname: true,
+            profile_image_url: true,
+          },
+        },
+        users: {
+          select: {
+            email: true,
+          },
+        },
+      },
+    });
   }
 }

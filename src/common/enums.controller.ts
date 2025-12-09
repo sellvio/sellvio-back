@@ -10,8 +10,6 @@ import {
   participation_status,
   payment_type,
   social_platform,
-  transaction_status,
-  transaction_type,
   user_status,
   user_type,
   video_status,
@@ -34,8 +32,6 @@ export class EnumsController {
     participation_status: Object.values(participation_status),
     payment_type: Object.values(payment_type),
     social_platform: Object.values(social_platform),
-    transaction_status: Object.values(transaction_status),
-    transaction_type: Object.values(transaction_type),
     video_status: Object.values(video_status),
     business_industry: Object.values(business_industry),
   };

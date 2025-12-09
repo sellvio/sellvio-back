@@ -353,6 +353,33 @@ export class CampaignsController {
   }
 
   @ApiOperation({
+    summary: 'Get chat server for a campaign',
+    description:
+      'Returns the chat server associated with the campaign, including channels and memberships. Only the campaign owner (business) can access.',
+  })
+  @ApiParam({
+    name: 'id',
+    type: 'number',
+    description: 'Campaign ID',
+    example: 1,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Chat server returned successfully',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Campaign or chat server not found',
+  })
+  @Get(':id/chat-server')
+  getChatServerByCampaign(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.campaignsService.getChatServerByCampaign(id, user.id);
+  }
+
+  @ApiOperation({
     summary: 'Update campaign',
     description: `Update an existing campaign. Only the campaign owner can modify it.
 
@@ -548,6 +575,36 @@ export class CampaignsController {
     return this.campaignsService.participate(id, user.id);
   }
 
+  @ApiOperation({
+    summary: 'List participation requests for a campaign',
+    description:
+      'Business owner can list participation requests/participants for a campaign. Optionally filter by status (pending/approved/rejected).',
+  })
+  @ApiParam({
+    name: 'id',
+    type: 'number',
+    description: 'Campaign ID',
+  })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: participation_status,
+    description: 'Filter by participation status',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Participation requests/participants returned',
+  })
+  @UseGuards(RolesGuard)
+  @Roles(user_type.business)
+  @Get(':id/participation-requests')
+  listParticipationRequests(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: RequestUser,
+    @Query('status') status?: participation_status,
+  ) {
+    return this.campaignsService.listParticipationRequests(id, user.id, status);
+  }
   @ApiOperation({
     summary: 'Update participation status',
     description: `Approve or reject creator participation in your campaign.
