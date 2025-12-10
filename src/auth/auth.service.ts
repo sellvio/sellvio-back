@@ -97,10 +97,20 @@ export class AuthService {
         }
 
         // Create default business account
+        const businessCurrencyCode = (
+          process.env.DEFAULT_CURRENCY_CODE || 'GEL'
+        ).toUpperCase();
+        const businessCurrencyName =
+          process.env.DEFAULT_CURRENCY_NAME || 'Georgian Lari';
+        await tx.currencies.upsert({
+          where: { code: businessCurrencyCode },
+          update: {},
+          create: { code: businessCurrencyCode, name: businessCurrencyName },
+        });
         await tx.business_accounts.create({
           data: {
             business_id: user.id,
-            currency: 'GEL',
+            currency: businessCurrencyCode,
             balance: 0.0,
           },
         });
@@ -127,10 +137,20 @@ export class AuthService {
         });
 
         // Create default creator account
+        const creatorCurrencyCode = (
+          process.env.DEFAULT_CURRENCY_CODE || 'GEL'
+        ).toUpperCase();
+        const creatorCurrencyName =
+          process.env.DEFAULT_CURRENCY_NAME || 'Georgian Lari';
+        await tx.currencies.upsert({
+          where: { code: creatorCurrencyCode },
+          update: {},
+          create: { code: creatorCurrencyCode, name: creatorCurrencyName },
+        });
         await tx.creator_accounts.create({
           data: {
             creator_id: user.id,
-            currency: 'GEL',
+            currency: creatorCurrencyCode,
             available_balance: 0.0,
           },
         });
