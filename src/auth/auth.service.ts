@@ -96,21 +96,10 @@ export class AuthService {
           });
         }
 
-        // Create default business account
-        const businessCurrencyCode = (
-          process.env.DEFAULT_CURRENCY_CODE || 'GEL'
-        ).toUpperCase();
-        const businessCurrencyName =
-          process.env.DEFAULT_CURRENCY_NAME || 'Georgian Lari';
-        await tx.currencies.upsert({
-          where: { code: businessCurrencyCode },
-          update: {},
-          create: { code: businessCurrencyCode, name: businessCurrencyName },
-        });
         await tx.business_accounts.create({
           data: {
             business_id: user.id,
-            currency: businessCurrencyCode,
+            currency: 'GEL',
             balance: 0.0,
           },
         });
