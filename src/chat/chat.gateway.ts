@@ -192,41 +192,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     client.emit('left', { channelId });
   }
 
-  // @SubscribeMessage('join')
-  // async onJoin(
-  //   @ConnectedSocket() client: Socket,
-  //   @MessageBody() payload: { channelId: number },
-  // ) {
-  //   const user: WsUser | undefined = (client.data as any).user;
-  //   if (!user?.id) {
-  //     client.emit('error', { message: 'Unauthorized' });
-  //     return;
-  //   }
-  //   const channelId = Number(payload?.channelId);
-  //   if (!channelId) {
-  //     client.emit('error', { message: 'Invalid channel id' });
-  //     return;
-  //   }
-  //   const can = await this.canViewChannel(user.id, channelId);
-  //   if (!can) {
-  //     client.emit('error', { message: 'Forbidden' });
-  //     return;
-  //   }
-  //   await client.join(this.channelRoomName(channelId));
-  //   client.emit('joined', { channelId });
-  // }
-
-  // @SubscribeMessage('leave')
-  // async onLeave(
-  //   @ConnectedSocket() client: Socket,
-  //   @MessageBody() payload: { channelId: number },
-  // ) {
-  //   const channelId = Number(payload?.channelId);
-  //   if (!channelId) return;
-  //   await client.leave(this.channelRoomName(channelId));
-  //   client.emit('left', { channelId });
-  // }
-
   @SubscribeMessage('message:send')
   async onSendMessage(
     @ConnectedSocket() client: Socket,
