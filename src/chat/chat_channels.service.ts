@@ -76,6 +76,12 @@ export class ChatChannelsService {
     }
     return allChannels.filter((c) => {
       const isPrivate = String(c.channel_state || 'public') === 'private';
+      console.log(
+        'isPrivate',
+        isPrivate,
+        c.id,
+        allowedPrivateIds.includes(c.id as number),
+      );
       return !isPrivate || allowedPrivateIds.includes(c.id as number);
     });
   }

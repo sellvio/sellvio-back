@@ -28,6 +28,7 @@ import { PaginationDto } from '../common/dto/pagination.dto';
 import { ListCampaignsDto } from './dto/list-campaigns.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { IsVerifiedGuard } from '../common/guards/is-verified.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequestUser } from '../common/interfaces/request-user.interface';
@@ -101,7 +102,7 @@ export class CampaignsController {
       },
     },
   })
-  @UseGuards(RolesGuard)
+  @UseGuards(RolesGuard, IsVerifiedGuard)
   @Roles(user_type.business)
   @Post()
   @ApiConsumes('multipart/form-data')
