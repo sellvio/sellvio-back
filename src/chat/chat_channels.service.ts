@@ -129,7 +129,6 @@ export class ChatChannelsService {
     channelId: number,
     data: {
       name?: string;
-      channel_type?: channel_type;
       description?: string | null;
     },
   ) {
@@ -144,7 +143,6 @@ export class ChatChannelsService {
       where: { id: channelId },
       data: {
         name: data.name,
-        channel_type: data.channel_type,
         description: data.description,
       },
     });
