@@ -19,6 +19,82 @@ import {
 export class CampaignsService {
   constructor(private prisma: PrismaService) {}
 
+  async searchCreatorsByName(
+    q: string,
+    pagination: { page: number; limit: number },
+  ) {
+    const search = String(q || '').trim();
+    if (!search) {
+      return {
+        data: [],
+        total: 0,
+        page: pagination.page,
+        limit: pagination.limit,
+        totalPages: 0,
+      };
+    }
+    const { page, limit } = pagination;
+    const skip = (page - 1) * limit;
+    // Tokenize search; require each token to be present in first or last name (case-insensitive)
+    const tokens = search
+      .split(/\s+/)
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
+    const andClauses =
+      tokens.length > 0
+        ? tokens.map((t) => ({
+            OR: [
+              { first_name: { contains: t, mode: 'insensitive' as const } },
+              { last_name: { contains: t, mode: 'insensitive' as const } },
+            ],
+          }))
+        : [];
+    const [rows, total] = await Promise.all([
+      this.prisma.creator_profiles.findMany({
+        where: {
+          AND: andClauses,
+          users: { user_type: user_type.creator },
+        },
+        select: {
+          user_id: true,
+          first_name: true,
+          last_name: true,
+          profile_image_url: true,
+          users: {
+            select: {
+              email: true,
+            },
+          },
+        },
+        orderBy: [{ first_name: 'asc' }, { last_name: 'asc' }],
+        skip,
+        take: limit,
+      }),
+      this.prisma.creator_profiles.count({
+        where: {
+          AND: andClauses,
+          users: { user_type: user_type.creator },
+        },
+      }),
+    ]);
+    const data = rows.map((r) => ({
+      id: r.user_id,
+      email: r.users.email,
+      first_name: r.first_name,
+      last_name: r.last_name,
+      profile_image_url: r.profile_image_url,
+    }));
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      hasNext: page < Math.ceil(total / limit),
+      hasPrev: page > 1,
+    };
+  }
+
   async create(
     businessId: number,
     createCampaignDto: CreateCampaignDto,

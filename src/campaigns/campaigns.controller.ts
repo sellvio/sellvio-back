@@ -688,4 +688,45 @@ export class CampaignsController {
       rejectionReason,
     );
   }
+
+  @ApiOperation({
+    summary: 'Search creators by name (for inviting to campaigns)',
+    description:
+      'Business users can search creators by first name, last name, or full name. Supports simple pagination.',
+  })
+  @ApiQuery({
+    name: 'q',
+    required: true,
+    description: 'Search text (matches first name, last name, or full name)',
+    example: 'john doe',
+  })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: Number,
+    description: 'Page number (default: 1)',
+    example: 1,
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Page size (default: 10, max: 50)',
+    example: 10,
+  })
+  @UseGuards(RolesGuard)
+  @Roles(user_type.business)
+  @Get('creators/search')
+  async searchCreators(
+    @Query('q') q: string,
+    @Query('page') page = 1,
+    @Query('limit') limit = 10,
+  ) {
+    const safePage = Math.max(1, Number(page) || 1);
+    const safeLimit = Math.min(50, Math.max(1, Number(limit) || 10));
+    return this.campaignsService.searchCreatorsByName(q, {
+      page: safePage,
+      limit: safeLimit,
+    });
+  }
 }
