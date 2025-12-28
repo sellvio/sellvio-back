@@ -374,11 +374,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         sender_id: number;
         content: string;
         created_at: Date;
+        pinned: boolean | null;
       }[]
     >`
       INSERT INTO public.channel_messages (channel_id, sender_id, content)
       VALUES (${channelId}, ${user.id}, ${content})
-      RETURNING id, channel_id, sender_id, content, created_at
+      RETURNING id, channel_id, sender_id, content, created_at, pinned
     `;
     const msg = rows[0];
     this.server.to(this.channelRoomName(channelId)).emit('message', {
@@ -387,6 +388,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       senderId: msg.sender_id,
       content: msg.content,
       createdAt: msg.created_at,
+      pinned: !!msg.pinned,
     });
     client.emit('message:ack', { id: msg.id });
   }
@@ -426,9 +428,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             sender_id: number;
             content: string;
             created_at: Date;
+            pinned: boolean | null;
           }[]
         >`
-          SELECT id, channel_id, sender_id, content, created_at
+          SELECT id, channel_id, sender_id, content, created_at, pinned
           FROM public.channel_messages
           WHERE channel_id = ${channelId} AND id < ${beforeId}
           ORDER BY id DESC
@@ -441,9 +444,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             sender_id: number;
             content: string;
             created_at: Date;
+            pinned: boolean | null;
           }[]
         >`
-          SELECT id, channel_id, sender_id, content, created_at
+          SELECT id, channel_id, sender_id, content, created_at, pinned
           FROM public.channel_messages
           WHERE channel_id = ${channelId}
           ORDER BY id DESC
@@ -458,6 +462,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         senderId: m.sender_id,
         content: m.content,
         createdAt: m.created_at,
+        pinned: !!m.pinned,
       }));
     client.emit('message:history', {
       channelId,
@@ -467,6 +472,84 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     });
   }
 
+  @SubscribeMessage('message:pin')
+  async onMessagePin(
+    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    payload: {
+      channelId: number;
+      messageId: number;
+      pinned: boolean; // true to pin, false to unpin
+    },
+  ) {
+    const user: WsUser | undefined = (client.data as any).user;
+    if (!user?.id) {
+      client.emit('error', { message: 'Unauthorized' });
+      return;
+    }
+    const channelId = Number(payload?.channelId);
+    const messageId = Number(payload?.messageId);
+    const pinned = Boolean(payload?.pinned);
+    if (!channelId || !messageId) {
+      client.emit('error', { message: 'Invalid channel or message id' });
+      return;
+    }
+    // Load channel -> server
+    const channel = await this.prisma.chat_channels.findUnique({
+      where: { id: channelId },
+      select: { chat_servers_id: true },
+    });
+    if (!channel) {
+      client.emit('error', { message: 'Channel not found' });
+      return;
+    }
+    // Check admin on server
+    const membership = await this.prisma.chat_memberships.findUnique({
+      where: {
+        chat_server_id_user_id: {
+          chat_server_id: channel.chat_servers_id,
+          user_id: user.id,
+        },
+      },
+      select: { role: true },
+    });
+    if (!membership || membership.role !== 'admin') {
+      client.emit('error', { message: 'Forbidden: admin only' });
+      return;
+    }
+    // Ensure message belongs to this channel
+    const msg = await this.prisma.channel_messages.findUnique({
+      where: { id: messageId },
+      select: { id: true, channel_id: true },
+    });
+    if (!msg || msg.channel_id !== channelId) {
+      client.emit('error', { message: 'Message not found in this channel' });
+      return;
+    }
+    // Update pin state
+    const updated = await this.prisma.channel_messages.update({
+      where: { id: messageId },
+      data: { pinned },
+      select: {
+        id: true,
+        channel_id: true,
+        sender_id: true,
+        content: true,
+        created_at: true,
+        pinned: true,
+      },
+    });
+    // Broadcast to channel
+    this.server.to(this.channelRoomName(channelId)).emit('message:pinned', {
+      id: updated.id,
+      channelId: updated.channel_id,
+      senderId: updated.sender_id,
+      content: updated.content,
+      createdAt: updated.created_at,
+      pinned: !!updated.pinned,
+    });
+    client.emit('message:pin:ok', { messageId: updated.id, pinned: !!updated.pinned });
+  }
   //Helper functions
   private serverRoomName(serverId: number) {
     return `server:${serverId}`;

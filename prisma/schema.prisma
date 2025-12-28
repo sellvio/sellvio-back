@@ -359,8 +359,8 @@ model users {
   campaign_videos                                         campaign_videos[]
   channel_memberships_channel_memberships_added_byTousers channel_memberships[]       @relation("channel_memberships_added_byTousers")
   channel_memberships_channel_memberships_user_idTousers  channel_memberships[]       @relation("channel_memberships_user_idTousers")
-  chat_memberships                                        chat_memberships[]
   channel_messages                                        channel_messages[]
+  chat_memberships                                        chat_memberships[]
   creator_profiles                                        creator_profiles?
   email_verification_tokens                               email_verification_tokens[]
   password_reset_tokens                                   password_reset_tokens[]
@@ -493,12 +493,12 @@ model channel_memberships {
 }
 
 model channel_messages {
-  id         Int       @id @default(autoincrement())
-  channel_id Int
-  sender_id  Int
-  content    String    @db.Text
-  created_at DateTime? @default(now()) @db.Timestamptz(6)
-
+  id            Int           @id @default(autoincrement())
+  channel_id    Int
+  sender_id     Int
+  content       String
+  pinned        Boolean?      @default(false)
+  created_at    DateTime?     @default(now()) @db.Timestamptz(6)
   chat_channels chat_channels @relation(fields: [channel_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   users         users         @relation(fields: [sender_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
@@ -567,6 +567,21 @@ model transaction_types {
   creator_transactions  creator_transactions[]
 
   @@index([name], map: "idx_transaction_types_name")
+}
+
+model automation_triggers {
+  id                Int       @id @default(autoincrement())
+  automation_name   String    @unique @db.VarChar(100)
+  is_active         Boolean?  @default(false)
+  last_triggered_at DateTime? @db.Timestamptz(6)
+  last_completed_at DateTime? @db.Timestamptz(6)
+  status            String?   @db.VarChar(50)
+  error_log         String?
+  created_at        DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@index([last_triggered_at], map: "idx_automation_triggers_last_triggered")
+  @@index([automation_name], map: "idx_automation_triggers_name")
+  @@index([status, is_active], map: "idx_automation_triggers_status_active")
 }
 
 enum campaign_status {
