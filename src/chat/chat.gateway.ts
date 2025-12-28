@@ -398,8 +398,22 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       select: {
         users: {
           select: {
-            email: true,
             id: true,
+            email: true,
+            user_type: true,
+            creator_profiles: {
+              select: {
+                first_name: true,
+                last_name: true,
+                profile_image_url: true,
+              },
+            },
+            business_profiles: {
+              select: {
+                company_name: true,
+                logo_url: true,
+              },
+            },
           },
         },
       },
@@ -419,20 +433,42 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       ),
     );
 
-    const users =
-      userIds.length > 0
-        ? await this.prisma.users.findMany({
-            where: { id: { in: userIds } },
-            select: { id: true, email: true, user_type: true },
-          })
-        : [];
+    const onlineIdSet = new Set<number>(userIds);
 
-    const onlineUsers = chatMemberships.filter((m) =>
-      users.some((u) => u.id === m.users.id),
+    const onlineUsersRaw = chatMemberships.filter((m) =>
+      onlineIdSet.has(m.users.id),
     );
-    const offlineUsers = chatMemberships.filter(
-      (m) => !users.some((u) => u.id === m.users.id),
+    const offlineUsersRaw = chatMemberships.filter(
+      (m) => !onlineIdSet.has(m.users.id),
     );
+    const onlineUsers = onlineUsersRaw.map((m) => ({
+      users: {
+        id: m.users.id,
+        email: m.users.email,
+        user_type: m.users.user_type,
+        first_name: m.users.creator_profiles?.first_name ?? null,
+        last_name: m.users.creator_profiles?.last_name ?? null,
+        company_name: m.users.business_profiles?.company_name ?? null,
+        profile_image_url:
+          m.users.creator_profiles?.profile_image_url ??
+          m.users.business_profiles?.logo_url ??
+          null,
+      },
+    }));
+    const offlineUsers = offlineUsersRaw.map((m) => ({
+      users: {
+        id: m.users.id,
+        email: m.users.email,
+        user_type: m.users.user_type,
+        first_name: m.users.creator_profiles?.first_name ?? null,
+        last_name: m.users.creator_profiles?.last_name ?? null,
+        company_name: m.users.business_profiles?.company_name ?? null,
+        profile_image_url:
+          m.users.creator_profiles?.profile_image_url ??
+          m.users.business_profiles?.logo_url ??
+          null,
+      },
+    }));
     this.server
       .to(this.serverRoomName(serverId))
       .emit('server:online', { serverId, onlineUsers, offlineUsers });
@@ -495,8 +531,45 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       ),
     );
 
-    const permitedUsers = permitted.map((u) => ({
-      users: { id: u.id, email: u.email },
+    // Enrich permitted users with profile data
+    const permittedIds = permitted.map((p) => p.id);
+    const permittedDetails =
+      permittedIds.length > 0
+        ? await this.prisma.users.findMany({
+            where: { id: { in: permittedIds } },
+            select: {
+              id: true,
+              email: true,
+              user_type: true,
+              creator_profiles: {
+                select: {
+                  first_name: true,
+                  last_name: true,
+                  profile_image_url: true,
+                },
+              },
+              business_profiles: {
+                select: {
+                  company_name: true,
+                  logo_url: true,
+                },
+              },
+            },
+          })
+        : [];
+    const permitedUsers = permittedDetails.map((u) => ({
+      users: {
+        id: u.id,
+        email: u.email,
+        user_type: u.user_type,
+        first_name: u.creator_profiles?.first_name ?? null,
+        last_name: u.creator_profiles?.last_name ?? null,
+        company_name: u.business_profiles?.company_name ?? null,
+        profile_image_url:
+          u.creator_profiles?.profile_image_url ??
+          u.business_profiles?.logo_url ??
+          null,
+      },
     }));
 
     const onlineUsers = permitedUsers.filter((u) =>
