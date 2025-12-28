@@ -2,6 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { channel_type } from '@prisma/client';
 import {
   IsEnum,
+  IsIn,
   IsOptional,
   IsString,
   MaxLength,
@@ -21,4 +22,10 @@ export class UpdateChannelDto {
   @IsString()
   @MaxLength(500)
   description?: string;
+
+  @ApiPropertyOptional({ example: 'public' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['public', 'private'])
+  channel_state?: string;
 }

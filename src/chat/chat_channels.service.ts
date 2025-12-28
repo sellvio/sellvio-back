@@ -130,6 +130,7 @@ export class ChatChannelsService {
     data: {
       name?: string;
       description?: string | null;
+      channel_state?: string | null;
     },
   ) {
     const existing = await this.prisma.chat_channels.findUnique({
@@ -144,6 +145,7 @@ export class ChatChannelsService {
       data: {
         name: data.name,
         description: data.description,
+        channel_state: data.channel_state,
       },
     });
   }
