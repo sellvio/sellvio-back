@@ -113,6 +113,155 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     await this.broadcastAllChannelsOnline(serverId);
   }
 
+  @SubscribeMessage('server:leave')
+  async onServerLeave(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { serverId: number },
+  ) {
+    const user: WsUser | undefined = (client.data as any).user;
+    if (!user?.id) {
+      client.emit('error', { message: 'Unauthorized' });
+      return;
+    }
+    const serverId = Number(payload?.serverId);
+    if (!serverId) {
+      client.emit('error', { message: 'Invalid server id' });
+      return;
+    }
+    const membership = await this.prisma.chat_memberships.findUnique({
+      where: {
+        chat_server_id_user_id: { chat_server_id: serverId, user_id: user.id },
+      },
+      select: { role: true },
+    });
+    if (!membership) {
+      client.emit('error', { message: 'You are not a member of this server' });
+      return;
+    }
+    if (membership.role === chat_role_type.admin) {
+      client.emit('error', { message: 'Admins cannot leave the server' });
+      return;
+    }
+    // Remove all channel memberships for this server and server membership
+    const channels = await this.prisma.chat_channels.findMany({
+      where: { chat_servers_id: serverId },
+      select: { id: true },
+    });
+    const channelIds = channels.map((c) => c.id);
+    await this.prisma.$transaction(async (tx) => {
+      if (channelIds.length > 0) {
+        await tx.channel_memberships.deleteMany({
+          where: { channel_id: { in: channelIds }, user_id: user.id },
+        });
+      }
+      await tx.chat_memberships.delete({
+        where: {
+          chat_server_id_user_id: {
+            chat_server_id: serverId,
+            user_id: user.id,
+          },
+        },
+      });
+    });
+    // Leave rooms for this socket
+    await client.leave(this.serverRoomName(serverId));
+    for (const ch of channelIds) {
+      await client.leave(this.channelRoomName(ch));
+    }
+    client.emit('server:left', { serverId });
+    await this.broadcastServerOnline(serverId);
+    await this.broadcastAllChannelsOnline(serverId);
+  }
+
+  @SubscribeMessage('server:kick')
+  async onServerKick(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { serverId: number; userId: number },
+  ) {
+    const requester: WsUser | undefined = (client.data as any).user;
+    if (!requester?.id) {
+      client.emit('error', { message: 'Unauthorized' });
+      return;
+    }
+    const serverId = Number(payload?.serverId);
+    const targetUserId = Number(payload?.userId);
+    if (!serverId || !targetUserId) {
+      client.emit('error', { message: 'Invalid server or user id' });
+      return;
+    }
+    const requesterMembership = await this.prisma.chat_memberships.findUnique({
+      where: {
+        chat_server_id_user_id: {
+          chat_server_id: serverId,
+          user_id: requester.id,
+        },
+      },
+      select: { role: true },
+    });
+    if (
+      !requesterMembership ||
+      requesterMembership.role !== chat_role_type.admin
+    ) {
+      client.emit('error', { message: 'Forbidden: admin only' });
+      return;
+    }
+    const targetMembership = await this.prisma.chat_memberships.findUnique({
+      where: {
+        chat_server_id_user_id: {
+          chat_server_id: serverId,
+          user_id: targetUserId,
+        },
+      },
+      select: { role: true },
+    });
+    if (!targetMembership) {
+      client.emit('error', { message: 'User is not in this server' });
+      return;
+    }
+    if (targetMembership.role === chat_role_type.admin) {
+      client.emit('error', { message: 'Cannot kick another admin' });
+      return;
+    }
+    const channels = await this.prisma.chat_channels.findMany({
+      where: { chat_servers_id: serverId },
+      select: { id: true },
+    });
+    const channelIds = channels.map((c) => c.id);
+    await this.prisma.$transaction(async (tx) => {
+      if (channelIds.length > 0) {
+        await tx.channel_memberships.deleteMany({
+          where: { channel_id: { in: channelIds }, user_id: targetUserId },
+        });
+      }
+      await tx.chat_memberships.delete({
+        where: {
+          chat_server_id_user_id: {
+            chat_server_id: serverId,
+            user_id: targetUserId,
+          },
+        },
+      });
+    });
+    // Remove target user's sockets from rooms if connected
+    const sockets = await this.server
+      .in(this.serverRoomName(serverId))
+      .fetchSockets();
+    for (const s of sockets) {
+      const sUserId =
+        (s.data && (s.data as any).user && (s.data as any).user.id) || 0;
+      if (sUserId === targetUserId) {
+        await s.leave(this.serverRoomName(serverId));
+        for (const ch of channelIds) {
+          await s.leave(this.channelRoomName(ch));
+        }
+        s.emit('server:kicked', { serverId });
+      }
+    }
+    await this.broadcastServerOnline(serverId);
+    await this.broadcastAllChannelsOnline(serverId);
+    client.emit('server:kick:ok', { serverId, userId: targetUserId });
+  }
+
   @SubscribeMessage('channel:open')
   async onChannelOpen(
     @ConnectedSocket() client: Socket,
