@@ -54,8 +54,9 @@ export class ChatChannelsController {
   create(
     @Param('serverId', ParseIntPipe) serverId: number,
     @Body() dto: CreateChannelDto,
+    @CurrentUser() user: RequestUser,
   ) {
-    return this.service.create(serverId, dto);
+    return this.service.create(serverId, dto, user.id);
   }
 
   @ApiOperation({

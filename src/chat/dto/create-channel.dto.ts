@@ -1,6 +1,15 @@
 import { ApiPropertyOptional, ApiProperty } from '@nestjs/swagger';
-import { channel_type } from '@prisma/client';
-import { IsEnum, IsOptional, IsString, MaxLength, MinLength, IsIn } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+  IsIn,
+  IsArray,
+  ArrayNotEmpty,
+  IsInt,
+  ArrayUnique,
+} from 'class-validator';
 
 export class CreateChannelDto {
   @ApiProperty({ example: 'general' })
@@ -9,10 +18,7 @@ export class CreateChannelDto {
   @MaxLength(100)
   name!: string;
 
-  @ApiPropertyOptional({ enum: channel_type, example: channel_type.general })
-  @IsOptional()
-  @IsEnum(channel_type)
-  channel_type?: channel_type;
+  // channel_type is always set to 'other' by server; admin cannot choose it.
 
   @ApiPropertyOptional({ example: 'public', enum: ['public', 'private'] })
   @IsOptional()
@@ -25,6 +31,14 @@ export class CreateChannelDto {
   @IsString()
   @MaxLength(500)
   description?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Optional list of creator user IDs to add to this channel on creation (must be approved participants of the server’s campaign)',
+    type: [Number],
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  member_user_ids?: number[];
 }
-
-

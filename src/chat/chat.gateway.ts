@@ -548,7 +548,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       createdAt: updated.created_at,
       pinned: !!updated.pinned,
     });
-    client.emit('message:pin:ok', { messageId: updated.id, pinned: !!updated.pinned });
+    client.emit('message:pin:ok', {
+      messageId: updated.id,
+      pinned: !!updated.pinned,
+    });
   }
   //Helper functions
   private serverRoomName(serverId: number) {

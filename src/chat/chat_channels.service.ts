@@ -90,10 +90,12 @@ export class ChatChannelsService {
     serverId: number,
     data: {
       name: string;
-      channel_type?: channel_type;
+      // channel_type is ignored; always set to 'other'
       description?: string | null;
       channel_state?: string | null;
+      member_user_ids?: number[];
     },
+    addedByUserId: number,
   ) {
     // Ensure server exists
     const server = await this.prisma.chat_servers.findUnique({
@@ -107,7 +109,8 @@ export class ChatChannelsService {
       data: {
         chat_servers_id: serverId,
         name: data.name,
-        channel_type: data.channel_type ?? channel_type.other,
+        // Force default channel type to 'other' regardless of input
+        channel_type: channel_type.other,
         description: data.description ?? null,
       },
     });
@@ -117,11 +120,27 @@ export class ChatChannelsService {
         SET channel_state = ${channelState}
         WHERE id = ${created.id}
       `;
-      return this.prisma.chat_channels.findUnique({
+      // proceed to post-create actions after fetching persisted state
+      await this.prisma.chat_channels.findUnique({
         where: { id: created.id },
       });
     }
-    return created;
+    // Optionally add members (creators) during creation
+    if (data.member_user_ids && data.member_user_ids.length > 0) {
+      // Reuse existing validation logic via addMembers
+      try {
+        await this.addMembers(
+          serverId,
+          created.id,
+          data.member_user_ids,
+          addedByUserId,
+        );
+      } catch (e) {
+        // If adding members fails, we still return the created channel;
+        // caller can inspect errors by calling addMembers separately.
+      }
+    }
+    return this.prisma.chat_channels.findUnique({ where: { id: created.id } });
   }
 
   async update(
