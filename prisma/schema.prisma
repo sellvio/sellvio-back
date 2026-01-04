@@ -234,9 +234,12 @@ model chat_channels {
   description         String?
   created_at          DateTime?             @default(now()) @db.Timestamptz(6)
   channel_state       String?               @default("public") @db.VarChar(100)
+  channel_category    String?               @default("texture") @db.VarChar(50)
   channel_memberships channel_memberships[]
   channel_messages    channel_messages[]
   chat_servers        chat_servers          @relation(fields: [chat_servers_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([channel_category], map: "idx_channel_category")
 }
 
 model chat_memberships {
@@ -408,10 +411,12 @@ model video_social_posts {
   post_url         String          @db.VarChar(500)
   platform_post_id String?         @db.VarChar(255)
   posted_at        DateTime?       @default(now()) @db.Timestamptz(6)
+  is_verified      Boolean?        @default(false)
   campaign_videos  campaign_videos @relation(fields: [video_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([video_id, platform])
   @@index([platform], map: "idx_video_social_posts_platform")
+  @@index([is_verified], map: "idx_is_verified")
 }
 
 model email_verification_tokens {
@@ -497,8 +502,8 @@ model channel_messages {
   channel_id    Int
   sender_id     Int
   content       String
-  pinned        Boolean?      @default(false)
   created_at    DateTime?     @default(now()) @db.Timestamptz(6)
+  pinned        Boolean?      @default(false)
   chat_channels chat_channels @relation(fields: [channel_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   users         users         @relation(fields: [sender_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
