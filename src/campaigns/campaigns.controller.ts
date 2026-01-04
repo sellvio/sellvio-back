@@ -24,6 +24,7 @@ import {
 import { CampaignsService } from './campaigns.service';
 import { CreateCampaignDto } from './dto/create-campaign.dto';
 import { UpdateCampaignDto } from './dto/update-campaign.dto';
+import { UpdateChatServerDto } from './dto/update-chat-server.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { ListCampaignsDto } from './dto/list-campaigns.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -378,6 +379,57 @@ export class CampaignsController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.campaignsService.getChatServerByCampaign(id, user.id);
+  }
+
+  @ApiOperation({
+    summary: 'Update chat server name and description',
+    description:
+      'Updates the name and/or description of the chat server associated with the campaign. Only the campaign owner (business) can update.',
+  })
+  @ApiParam({
+    name: 'id',
+    type: 'number',
+    description: 'Campaign ID',
+    example: 1,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Chat server updated successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'number', example: 1 },
+        campaign_id: { type: 'number', example: 1 },
+        name: { type: 'string', example: 'Summer Campaign Chat' },
+        description: {
+          type: 'string',
+          example: 'Official chat for Summer Campaign',
+        },
+        created_at: { type: 'string', example: '2024-01-01T00:00:00.000Z' },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Access denied - You can only update your own campaigns',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Campaign or chat server not found',
+  })
+  @UseGuards(RolesGuard)
+  @Roles(user_type.business)
+  @Patch(':id/chat-server')
+  updateChatServer(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updateChatServerDto: UpdateChatServerDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.campaignsService.updateChatServer(
+      id,
+      user.id,
+      updateChatServerDto,
+    );
   }
 
   @ApiOperation({

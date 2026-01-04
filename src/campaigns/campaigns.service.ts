@@ -798,4 +798,58 @@ export class CampaignsService {
       },
     });
   }
+
+  async updateChatServer(
+    campaignId: number,
+    userId: number,
+    data: { name?: string; description?: string },
+  ) {
+    // Verify campaign exists and user is the owner
+    const campaign = await this.prisma.campaigns.findUnique({
+      where: { id: campaignId },
+      select: { id: true, business_id: true },
+    });
+
+    if (!campaign) {
+      throw new NotFoundException('Campaign not found');
+    }
+
+    if (campaign.business_id !== userId) {
+      throw new ForbiddenException(
+        'You can only update chat servers for your own campaigns',
+      );
+    }
+
+    // Find the chat server for this campaign
+    const server = await this.prisma.chat_servers.findFirst({
+      where: { campaign_id: campaignId },
+    });
+
+    if (!server) {
+      throw new NotFoundException('Chat server not found for this campaign');
+    }
+
+    // Update the chat server
+    const updateData: { name?: string; description?: string } = {};
+    if (data.name !== undefined) {
+      updateData.name = data.name;
+    }
+    if (data.description !== undefined) {
+      updateData.description = data.description;
+    }
+
+    const updatedServer = await this.prisma.chat_servers.update({
+      where: { id: server.id },
+      data: updateData,
+      select: {
+        id: true,
+        campaign_id: true,
+        name: true,
+        description: true,
+        created_at: true,
+      },
+    });
+
+    return updatedServer;
+  }
 }
