@@ -288,6 +288,29 @@ export class CampaignsController {
     description: 'Filter campaigns by business ID',
     example: 1,
   })
+  @ApiQuery({
+    name: 'creator_types',
+    required: false,
+    type: [String],
+    description:
+      'Filter by target creator types (comma-separated: beginner,experienced,influencer,clipper)',
+    example: 'beginner,influencer',
+  })
+  @ApiQuery({
+    name: 'platforms',
+    required: false,
+    type: [String],
+    description:
+      'Filter by platforms (comma-separated: instagram,tiktok,facebook)',
+    example: 'instagram,tiktok',
+  })
+  @ApiQuery({
+    name: 'tags',
+    required: false,
+    type: [String],
+    description: 'Filter by tag names (comma-separated)',
+    example: 'fashion,summer',
+  })
   @ApiResponse({
     status: 200,
     description: 'Campaigns retrieved successfully',
@@ -307,9 +330,10 @@ export class CampaignsController {
   })
   @Get()
   findAll(@Query() query: ListCampaignsDto) {
-    const { page, limit, status, business_id } = query;
+    const { page, limit, status, business_id, creator_types, platforms, tags } =
+      query;
     const pagination: PaginationDto = { page, limit } as PaginationDto;
-    const filters = { status, business_id };
+    const filters = { status, business_id, creator_types, platforms, tags };
     return this.campaignsService.findAll(pagination, filters);
   }
 
@@ -744,11 +768,11 @@ export class CampaignsController {
   @ApiOperation({
     summary: 'Search creators by name (for inviting to campaigns)',
     description:
-      'Business users can search creators by first name, last name, or full name. Supports simple pagination.',
+      'Business users can search creators by first name, last name, or full name. Supports simple pagination and filtering by favorites.',
   })
   @ApiQuery({
     name: 'q',
-    required: true,
+    required: false,
     description: 'Search text (matches first name, last name, or full name)',
     example: 'john doe',
   })
@@ -766,6 +790,36 @@ export class CampaignsController {
     description: 'Page size (default: 10, max: 50)',
     example: 10,
   })
+  @ApiQuery({
+    name: 'favorites_only',
+    required: false,
+    type: Boolean,
+    description: 'Filter to show only favorite creators',
+    example: false,
+  })
+  @ApiQuery({
+    name: 'creator_types',
+    required: false,
+    type: [String],
+    description:
+      'Filter by creator types (comma-separated: beginner,experienced,influencer,clipper)',
+    example: 'beginner,influencer',
+  })
+  @ApiQuery({
+    name: 'platforms',
+    required: false,
+    type: [String],
+    description:
+      'Filter by connected platforms (comma-separated: instagram,tiktok,facebook)',
+    example: 'instagram,tiktok',
+  })
+  @ApiQuery({
+    name: 'tags',
+    required: false,
+    type: [String],
+    description: 'Filter by tag names (comma-separated)',
+    example: 'fashion,beauty',
+  })
   @UseGuards(RolesGuard)
   @Roles(user_type.business)
   @Get('creators/search')
@@ -773,12 +827,103 @@ export class CampaignsController {
     @Query('q') q: string,
     @Query('page') page = 1,
     @Query('limit') limit = 10,
+    @Query('favorites_only') favoritesOnly: string = 'false',
+    @Query('creator_types') creatorTypes: string,
+    @Query('platforms') platforms: string,
+    @Query('tags') tags: string,
+    @CurrentUser() user: RequestUser,
   ) {
     const safePage = Math.max(1, Number(page) || 1);
     const safeLimit = Math.min(50, Math.max(1, Number(limit) || 10));
-    return this.campaignsService.searchCreatorsByName(q, {
-      page: safePage,
-      limit: safeLimit,
-    });
+
+    const filters = {
+      favoritesOnly: favoritesOnly === 'true',
+      creatorTypes: creatorTypes
+        ? creatorTypes.split(',').filter((t) => t.trim())
+        : undefined,
+      platforms: platforms
+        ? platforms.split(',').filter((p) => p.trim())
+        : undefined,
+      tags: tags ? tags.split(',').filter((t) => t.trim()) : undefined,
+    };
+
+    return this.campaignsService.searchCreators(
+      user.id,
+      q || '',
+      { page: safePage, limit: safeLimit },
+      filters,
+    );
+  }
+
+  // ===== Favorite Creators Endpoints =====
+
+  @ApiOperation({
+    summary: 'Add a creator to favorites',
+    description: 'Business users can add creators to their favorites list.',
+  })
+  @ApiParam({
+    name: 'creatorId',
+    type: 'number',
+    description: 'Creator user ID to add to favorites',
+    example: 5,
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Creator added to favorites',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Creator added to favorites' },
+        favorite: {
+          type: 'object',
+          properties: {
+            id: { type: 'number' },
+            business_id: { type: 'number' },
+            creator_id: { type: 'number' },
+            created_at: { type: 'string' },
+          },
+        },
+      },
+    },
+  })
+  @UseGuards(RolesGuard)
+  @Roles(user_type.business)
+  @Post('favorites/:creatorId')
+  addCreatorToFavorites(
+    @Param('creatorId', ParseIntPipe) creatorId: number,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.campaignsService.addCreatorToFavorites(user.id, creatorId);
+  }
+
+  @ApiOperation({
+    summary: 'Remove a creator from favorites',
+    description:
+      'Business users can remove creators from their favorites list.',
+  })
+  @ApiParam({
+    name: 'creatorId',
+    type: 'number',
+    description: 'Creator user ID to remove from favorites',
+    example: 5,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Creator removed from favorites',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Creator removed from favorites' },
+      },
+    },
+  })
+  @UseGuards(RolesGuard)
+  @Roles(user_type.business)
+  @Delete('favorites/:creatorId')
+  removeCreatorFromFavorites(
+    @Param('creatorId', ParseIntPipe) creatorId: number,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.campaignsService.removeCreatorFromFavorites(user.id, creatorId);
   }
 }

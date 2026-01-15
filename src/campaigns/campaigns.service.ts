@@ -205,7 +205,6 @@ export class CampaignsService {
   async findAll(pagination: PaginationDto, filters?: any) {
     const { page, limit } = pagination;
     const skip = (page - 1) * limit;
-    console.log(filters);
 
     const where: any = {};
 
@@ -215,6 +214,33 @@ export class CampaignsService {
 
     if (filters?.business_id) {
       where.business_id = filters.business_id;
+    }
+
+    // Filter by creator types (campaigns that target any of the specified creator types)
+    if (filters?.creator_types && filters.creator_types.length > 0) {
+      where.target_creator_types = {
+        hasSome: filters.creator_types,
+      };
+    }
+
+    // Filter by platforms (campaigns that have any of the specified platforms)
+    if (filters?.platforms && filters.platforms.length > 0) {
+      where.campaign_platforms = {
+        some: {
+          platform: { in: filters.platforms },
+        },
+      };
+    }
+
+    // Filter by tags (campaigns that have any of the specified tags)
+    if (filters?.tags && filters.tags.length > 0) {
+      where.campaign_tags = {
+        some: {
+          tags: {
+            name: { in: filters.tags },
+          },
+        },
+      };
     }
 
     const [campaigns, total] = await Promise.all([
@@ -851,5 +877,226 @@ export class CampaignsService {
     });
 
     return updatedServer;
+  }
+
+  // ===== Favorite Creators Methods =====
+
+  async addCreatorToFavorites(businessId: number, creatorId: number) {
+    // Verify user is a creator
+    const creator = await this.prisma.users.findUnique({
+      where: { id: creatorId },
+      select: { id: true, user_type: true },
+    });
+
+    if (!creator || creator.user_type !== user_type.creator) {
+      throw new BadRequestException('User is not a creator');
+    }
+
+    // Check if already favorited
+    const existing = await this.prisma.business_favorites.findUnique({
+      where: {
+        business_id_creator_id: {
+          business_id: businessId,
+          creator_id: creatorId,
+        },
+      },
+    });
+
+    if (existing) {
+      return { message: 'Creator is already in favorites', favorite: existing };
+    }
+
+    const favorite = await this.prisma.business_favorites.create({
+      data: {
+        business_id: businessId,
+        creator_id: creatorId,
+      },
+      include: {
+        creator_profiles: {
+          select: {
+            first_name: true,
+            last_name: true,
+            nickname: true,
+            profile_image_url: true,
+          },
+        },
+      },
+    });
+
+    return { message: 'Creator added to favorites', favorite };
+  }
+
+  async removeCreatorFromFavorites(businessId: number, creatorId: number) {
+    const existing = await this.prisma.business_favorites.findUnique({
+      where: {
+        business_id_creator_id: {
+          business_id: businessId,
+          creator_id: creatorId,
+        },
+      },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Creator is not in favorites');
+    }
+
+    await this.prisma.business_favorites.delete({
+      where: {
+        business_id_creator_id: {
+          business_id: businessId,
+          creator_id: creatorId,
+        },
+      },
+    });
+
+    return { message: 'Creator removed from favorites' };
+  }
+
+  async searchCreators(
+    businessId: number,
+    q: string,
+    pagination: { page: number; limit: number },
+    filters: {
+      favoritesOnly?: boolean;
+      creatorTypes?: string[];
+      platforms?: string[];
+      tags?: string[];
+    } = {},
+  ) {
+    const search = String(q || '').trim();
+    const { page, limit } = pagination;
+    const skip = (page - 1) * limit;
+
+    // Build search conditions
+    const tokens = search
+      .split(/\s+/)
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
+
+    const searchClauses =
+      tokens.length > 0
+        ? tokens.map((t) => ({
+            OR: [
+              { first_name: { contains: t, mode: 'insensitive' as const } },
+              { last_name: { contains: t, mode: 'insensitive' as const } },
+            ],
+          }))
+        : [];
+
+    const baseWhere: any = {
+      users: { user_type: user_type.creator },
+    };
+
+    if (searchClauses.length > 0) {
+      baseWhere.AND = searchClauses;
+    }
+
+    // Filter by favorites only
+    if (filters.favoritesOnly) {
+      baseWhere.business_favorites = {
+        some: {
+          business_id: businessId,
+        },
+      };
+    }
+
+    // Filter by creator types
+    if (filters.creatorTypes && filters.creatorTypes.length > 0) {
+      baseWhere.creator_type = { in: filters.creatorTypes };
+    }
+
+    // Filter by platforms (creators who have connected these platforms)
+    if (filters.platforms && filters.platforms.length > 0) {
+      baseWhere.social_media_accounts = {
+        some: {
+          platform: { in: filters.platforms },
+          is_connected: true,
+        },
+      };
+    }
+
+    // Filter by tags (creators who have any of these tags)
+    if (filters.tags && filters.tags.length > 0) {
+      baseWhere.creator_tags = {
+        some: {
+          tags: {
+            name: { in: filters.tags },
+          },
+        },
+      };
+    }
+
+    // Get favorite creator IDs for this business to mark them in results
+    const favoriteIds = new Set(
+      (
+        await this.prisma.business_favorites.findMany({
+          where: { business_id: businessId },
+          select: { creator_id: true },
+        })
+      ).map((f) => f.creator_id),
+    );
+
+    const [rows, total] = await Promise.all([
+      this.prisma.creator_profiles.findMany({
+        where: baseWhere,
+        select: {
+          user_id: true,
+          first_name: true,
+          last_name: true,
+          nickname: true,
+          profile_image_url: true,
+          creator_type: true,
+          users: {
+            select: {
+              email: true,
+            },
+          },
+          social_media_accounts: {
+            where: { is_connected: true },
+            select: {
+              platform: true,
+            },
+          },
+          creator_tags: {
+            select: {
+              tags: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: [{ first_name: 'asc' }, { last_name: 'asc' }],
+        skip,
+        take: limit,
+      }),
+      this.prisma.creator_profiles.count({
+        where: baseWhere,
+      }),
+    ]);
+
+    const data = rows.map((r) => ({
+      id: r.user_id,
+      email: r.users.email,
+      first_name: r.first_name,
+      last_name: r.last_name,
+      nickname: r.nickname,
+      profile_image_url: r.profile_image_url,
+      creator_type: r.creator_type,
+      platforms: r.social_media_accounts.map((s) => s.platform),
+      tags: r.creator_tags.map((t) => t.tags.name),
+      is_favorite: favoriteIds.has(r.user_id),
+    }));
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      hasNext: page < Math.ceil(total / limit),
+      hasPrev: page > 1,
+    };
   }
 }
