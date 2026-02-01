@@ -14,7 +14,33 @@ import {
 
 @Injectable()
 export class ChatChannelsService {
+  // Cache for lookup table IDs
+  private lookupCache: {
+    chatRoleTypes?: Map<string, number>;
+    channelTypes?: Map<string, number>;
+  } = {};
+
   constructor(private readonly prisma: PrismaService) {}
+
+  private async getChatRoleTypeId(role: string): Promise<number | null> {
+    if (!this.lookupCache.chatRoleTypes) {
+      const roles = await this.prisma.chat_role_types.findMany();
+      this.lookupCache.chatRoleTypes = new Map(
+        roles.map((r) => [r.chat_role_type, r.id]),
+      );
+    }
+    return this.lookupCache.chatRoleTypes.get(role) || null;
+  }
+
+  private async getChannelTypeId(type: string): Promise<number | null> {
+    if (!this.lookupCache.channelTypes) {
+      const types = await this.prisma.channel_types.findMany();
+      this.lookupCache.channelTypes = new Map(
+        types.map((t) => [t.channel_type, t.id]),
+      );
+    }
+    return this.lookupCache.channelTypes.get(type) || null;
+  }
 
   async listVisible(serverId: number, userId: number) {
     const server = await this.prisma.chat_servers.findUnique({
@@ -105,12 +131,14 @@ export class ChatChannelsService {
     if (!server) throw new NotFoundException('Chat server not found');
 
     const channelState = data.channel_state || undefined;
+    const channelTypeId = await this.getChannelTypeId('other');
     const created = await this.prisma.chat_channels.create({
       data: {
         chat_servers_id: serverId,
         name: data.name,
         // Force default channel type to 'other' regardless of input
         channel_type: channel_type.other,
+        channel_type_id: channelTypeId,
         description: data.description ?? null,
       },
     });
@@ -231,11 +259,13 @@ export class ChatChannelsService {
       };
     }
     // Add member with role user
+    const roleId = await this.getChatRoleTypeId('user');
     await this.prisma.channel_memberships.create({
       data: {
         channel_id: channelId,
         user_id: creatorUserId,
         role: chat_role_type.user,
+        role_id: roleId,
         added_by: addedByUserId,
       },
     });
@@ -309,11 +339,13 @@ export class ChatChannelsService {
     const toInsert = eligible.filter((id) => !alreadyMembers.has(id));
 
     if (toInsert.length > 0) {
+      const roleId = await this.getChatRoleTypeId('user');
       await this.prisma.channel_memberships.createMany({
         data: toInsert.map((uid) => ({
           channel_id: channelId,
           user_id: uid,
           role: chat_role_type.user,
+          role_id: roleId,
           added_by: addedByUserId,
         })),
         skipDuplicates: true,

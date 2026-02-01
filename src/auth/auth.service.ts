@@ -17,11 +17,47 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 
 @Injectable()
 export class AuthService {
+  // Cache for lookup table IDs
+  private lookupCache: {
+    userTypes?: Map<string, number>;
+    creatorTypes?: Map<string, number>;
+  } = {};
+
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
     private emailService: EmailService,
   ) {}
+
+  private async getUserTypeId(type: string): Promise<number> {
+    if (!this.lookupCache.userTypes) {
+      const types = await this.prisma.user_types.findMany();
+      this.lookupCache.userTypes = new Map(
+        types.map((t) => [t.user_type, t.id]),
+      );
+    }
+    return this.lookupCache.userTypes.get(type) || 1;
+  }
+
+  private async getCreatorTypeId(type: string): Promise<number | null> {
+    if (!this.lookupCache.creatorTypes) {
+      const types = await this.prisma.creator_types.findMany();
+      this.lookupCache.creatorTypes = new Map(
+        types.map((t) => [t.creator_type, t.id]),
+      );
+    }
+    return this.lookupCache.creatorTypes.get(type) || null;
+  }
+
+  private async getBusinessIndustryId(
+    industry: string,
+  ): Promise<number | null> {
+    const found = await this.prisma.business_industries.findFirst({
+      where: { business_industry: industry },
+      select: { id: true },
+    });
+    return found?.id || null;
+  }
 
   async register(registerDto: RegisterDto) {
     const {
@@ -43,6 +79,9 @@ export class AuthService {
     // Hash password
     const hashedPassword = await argon2.hash(password);
 
+    // Get user_type_id from lookup table
+    const userTypeId = await this.getUserTypeId(userType);
+
     // Create user with profile in transaction
     const result = await this.prisma.$transaction(async (tx) => {
       // Create user
@@ -51,6 +90,7 @@ export class AuthService {
           email: email.toLowerCase().trim(),
           password_hash: hashedPassword,
           user_type: userType,
+          user_type_id: userTypeId,
         },
       });
 
@@ -408,8 +448,11 @@ export class AuthService {
           creatorData.first_name = dto.first_name;
         if (dto.last_name !== undefined) creatorData.last_name = dto.last_name;
         if (dto.nickname !== undefined) creatorData.nickname = dto.nickname;
-        if (dto.creator_type !== undefined)
+        if (dto.creator_type !== undefined) {
           creatorData.creator_type = dto.creator_type;
+          const creatorTypeId = await this.getCreatorTypeId(dto.creator_type);
+          if (creatorTypeId) creatorData.creator_type_id = creatorTypeId;
+        }
         if (dto.bio !== undefined) creatorData.bio = dto.bio;
         if (dto.profile_image_url !== undefined)
           creatorData.profile_image_url = dto.profile_image_url;
@@ -486,9 +529,14 @@ export class AuthService {
         if (dto.location !== undefined) businessData.location = dto.location;
         if (dto.business_cover_image_url !== undefined)
           businessData.business_cover_image_url = dto.business_cover_image_url;
-        if (dto.business_industry_name !== undefined)
+        if (dto.business_industry_name !== undefined) {
           businessData.business_industry_name =
             dto.business_industry_name as business_industry;
+          const industryId = await this.getBusinessIndustryId(
+            dto.business_industry_name,
+          );
+          if (industryId) businessData.business_industry_id = industryId;
+        }
 
         if (dto.business_employee_range !== undefined)
           businessData.business_employee_range = dto.business_employee_range;

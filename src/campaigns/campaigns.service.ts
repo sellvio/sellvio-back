@@ -17,7 +17,82 @@ import {
 
 @Injectable()
 export class CampaignsService {
+  // Cache for lookup table IDs
+  private lookupCache: {
+    campaignStatuses?: Map<string, number>;
+    participationStatuses?: Map<string, number>;
+    paymentTypes?: Map<string, number>;
+    creatorTypes?: Map<string, number>;
+    chatRoleTypes?: Map<string, number>;
+    userTypes?: Map<string, number>;
+  } = {};
+
   constructor(private prisma: PrismaService) {}
+
+  // Helper methods to get IDs from lookup tables
+  private async getCampaignStatusId(status: string): Promise<number | null> {
+    if (!this.lookupCache.campaignStatuses) {
+      const statuses = await this.prisma.campaign_statuses.findMany();
+      this.lookupCache.campaignStatuses = new Map(
+        statuses.map((s) => [s.campaign_status, s.id]),
+      );
+    }
+    return this.lookupCache.campaignStatuses.get(status) || null;
+  }
+
+  private async getParticipationStatusId(
+    status: string,
+  ): Promise<number | null> {
+    if (!this.lookupCache.participationStatuses) {
+      const statuses = await this.prisma.participation_statuses.findMany();
+      this.lookupCache.participationStatuses = new Map(
+        statuses.map((s) => [s.participation_status, s.id]),
+      );
+    }
+    return this.lookupCache.participationStatuses.get(status) || null;
+  }
+
+  private async getPaymentTypeId(type: string): Promise<number | null> {
+    if (!this.lookupCache.paymentTypes) {
+      const types = await this.prisma.payment_types.findMany();
+      this.lookupCache.paymentTypes = new Map(
+        types.map((t) => [t.payment_type, t.id]),
+      );
+    }
+    return this.lookupCache.paymentTypes.get(type) || null;
+  }
+
+  private async getCreatorTypeIds(types: string[]): Promise<number[]> {
+    if (!this.lookupCache.creatorTypes) {
+      const creatorTypes = await this.prisma.creator_types.findMany();
+      this.lookupCache.creatorTypes = new Map(
+        creatorTypes.map((t) => [t.creator_type, t.id]),
+      );
+    }
+    return types
+      .map((t) => this.lookupCache.creatorTypes!.get(t))
+      .filter((id): id is number => id !== undefined);
+  }
+
+  private async getChatRoleTypeId(role: string): Promise<number | null> {
+    if (!this.lookupCache.chatRoleTypes) {
+      const roles = await this.prisma.chat_role_types.findMany();
+      this.lookupCache.chatRoleTypes = new Map(
+        roles.map((r) => [r.chat_role_type, r.id]),
+      );
+    }
+    return this.lookupCache.chatRoleTypes.get(role) || null;
+  }
+
+  private async getUserTypeId(type: string): Promise<number | null> {
+    if (!this.lookupCache.userTypes) {
+      const types = await this.prisma.user_types.findMany();
+      this.lookupCache.userTypes = new Map(
+        types.map((t) => [t.user_type, t.id]),
+      );
+    }
+    return this.lookupCache.userTypes.get(type) || null;
+  }
 
   async searchCreatorsByName(
     q: string,
@@ -106,15 +181,16 @@ export class CampaignsService {
       | undefined;
     const campaignData = { ...rest } as any;
 
-    // // Verify user is a business
-    // const user = await this.prisma.users.findUnique({
-    //   where: { id: businessId },
-    //   include: { business_profiles: true },
-    // });
-
-    // if (!user || user.user_type !== user_type.business) {
-    //   throw new ForbiddenException('Only business users can create campaigns');
-    // }
+    // Look up IDs from lookup tables
+    const statusId = campaignData.status
+      ? await this.getCampaignStatusId(campaignData.status)
+      : await this.getCampaignStatusId('draft');
+    const paymentTypeId = campaignData.payment_type
+      ? await this.getPaymentTypeId(campaignData.payment_type)
+      : null;
+    const creatorTypeIds = campaignData.target_creator_types
+      ? await this.getCreatorTypeIds(campaignData.target_creator_types)
+      : [];
 
     const result = await this.prisma.$transaction(async (tx) => {
       // Create campaign
@@ -128,6 +204,11 @@ export class CampaignsService {
           start_date: startDate,
           end_date: endDate,
           finish_date: endDate,
+          // Set the new ID fields
+          status_id: statusId,
+          payment_type_id: paymentTypeId,
+          target_creator_types_id: creatorTypeIds,
+          chat_type_new: campaignData.chat_type || 'public',
         },
       });
 
@@ -646,6 +727,12 @@ export class CampaignsService {
 
     // For public campaigns, auto-approve; for private, create pending request
     const isPublic = String(campaign.chat_type || 'public') === 'public';
+    const participationStatusValue = isPublic ? 'approved' : 'pending';
+    const participationStatusId = await this.getParticipationStatusId(
+      participationStatusValue,
+    );
+    const chatRoleId = await this.getChatRoleTypeId('user');
+
     const participation = await this.prisma.campaign_participants.create({
       data: {
         campaign_id: campaignId,
@@ -653,6 +740,7 @@ export class CampaignsService {
         status: isPublic
           ? participation_status.approved
           : participation_status.pending,
+        status_id: participationStatusId,
         approved_at: isPublic ? new Date() : null,
         approved_by: isPublic ? campaign.business_id : null,
       },
@@ -684,6 +772,7 @@ export class CampaignsService {
             chat_server_id: server.id,
             user_id: creatorId,
             role: chat_role_type.user,
+            role_id: chatRoleId,
           },
         });
       }
@@ -727,6 +816,9 @@ export class CampaignsService {
       throw new NotFoundException('Participation not found');
     }
 
+    // Get the status_id from lookup table
+    const statusId = await this.getParticipationStatusId(status);
+
     const updatedParticipation = await this.prisma.campaign_participants.update(
       {
         where: {
@@ -737,6 +829,7 @@ export class CampaignsService {
         },
         data: {
           status,
+          status_id: statusId,
           approved_at:
             status === participation_status.approved ? new Date() : null,
           approved_by:
@@ -758,6 +851,7 @@ export class CampaignsService {
 
     // If approved now, ensure server membership exists
     if (status === participation_status.approved) {
+      const chatRoleId = await this.getChatRoleTypeId('user');
       const server = await this.prisma.chat_servers.findFirst({
         where: { campaign_id: campaignId },
         select: { id: true },
@@ -773,6 +867,7 @@ export class CampaignsService {
           update: {},
           create: {
             chat_server_id: server.id,
+            role_id: chatRoleId,
             user_id: creatorId,
             role: chat_role_type.user,
           },

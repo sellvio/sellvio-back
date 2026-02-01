@@ -12,7 +12,22 @@ import { user_type, video_status, participation_status } from '@prisma/client';
 
 @Injectable()
 export class VideosService {
+  // Cache for lookup table IDs
+  private lookupCache: {
+    videoStatuses?: Map<string, number>;
+  } = {};
+
   constructor(private prisma: PrismaService) {}
+
+  private async getVideoStatusId(status: string): Promise<number | null> {
+    if (!this.lookupCache.videoStatuses) {
+      const statuses = await this.prisma.video_statuses.findMany();
+      this.lookupCache.videoStatuses = new Map(
+        statuses.map((s) => [s.video_status, s.id]),
+      );
+    }
+    return this.lookupCache.videoStatuses.get(status) || null;
+  }
 
   async create(
     campaignId: number,
@@ -218,10 +233,14 @@ export class VideosService {
       );
     }
 
+    // Get status_id from lookup table
+    const statusId = await this.getVideoStatusId(reviewVideoDto.status);
+
     const updatedVideo = await this.prisma.campaign_videos.update({
       where: { id },
       data: {
         status: reviewVideoDto.status,
+        status_id: statusId,
         review_comments: reviewVideoDto.review_comments,
         reviewed_at: new Date(),
         reviewed_by: reviewerId,
