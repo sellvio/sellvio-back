@@ -311,7 +311,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       ORDER BY id DESC
       LIMIT ${limit}
     `;
-    const messages = rows
+    const mapped = rows
       .slice()
       .reverse()
       .map((m) => ({
@@ -321,6 +321,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         content: m.content,
         createdAt: m.created_at,
       }));
+    const messages = await this.enrichMessagesWithSenderInfo(mapped);
     client.emit('message:history', {
       channelId,
       messages,
@@ -382,14 +383,17 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       RETURNING id, channel_id, sender_id, content, created_at, pinned
     `;
     const msg = rows[0];
-    this.server.to(this.channelRoomName(channelId)).emit('message', {
-      id: msg.id,
-      channelId: msg.channel_id,
-      senderId: msg.sender_id,
-      content: msg.content,
-      createdAt: msg.created_at,
-      pinned: !!msg.pinned,
-    });
+    const [enriched] = await this.enrichMessagesWithSenderInfo([
+      {
+        id: msg.id,
+        channelId: msg.channel_id,
+        senderId: msg.sender_id,
+        content: msg.content,
+        createdAt: msg.created_at,
+        pinned: !!msg.pinned,
+      },
+    ]);
+    this.server.to(this.channelRoomName(channelId)).emit('message', enriched);
     client.emit('message:ack', { id: msg.id });
   }
 
@@ -453,7 +457,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           ORDER BY id DESC
           LIMIT ${limit}
         `;
-    const messages = rows
+    const mapped = rows
       .slice()
       .reverse()
       .map((m) => ({
@@ -464,6 +468,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         createdAt: m.created_at,
         pinned: !!m.pinned,
       }));
+    const messages = await this.enrichMessagesWithSenderInfo(mapped);
     client.emit('message:history', {
       channelId,
       messages,
@@ -554,6 +559,54 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     });
   }
   //Helper functions
+  private async enrichMessagesWithSenderInfo(
+    messages: {
+      senderId: number;
+      [key: string]: any;
+    }[],
+  ) {
+    const senderIds = [...new Set(messages.map((m) => m.senderId))];
+    if (senderIds.length === 0) return messages;
+
+    const users = await this.prisma.users.findMany({
+      where: { id: { in: senderIds } },
+      select: {
+        id: true,
+        creator_profiles: {
+          select: {
+            first_name: true,
+            last_name: true,
+            profile_image_url: true,
+          },
+        },
+        business_profiles: {
+          select: {
+            company_name: true,
+            logo_url: true,
+          },
+        },
+      },
+    });
+
+    const userMap = new Map(users.map((u) => [u.id, u]));
+
+    return messages.map((m) => {
+      const user = userMap.get(m.senderId);
+      return {
+        ...m,
+        senderFirstName:
+          user?.creator_profiles?.first_name ??
+          user?.business_profiles?.company_name ??
+          null,
+        senderLastName: user?.creator_profiles?.last_name ?? null,
+        senderImageUrl:
+          user?.creator_profiles?.profile_image_url ??
+          user?.business_profiles?.logo_url ??
+          null,
+      };
+    });
+  }
+
   private serverRoomName(serverId: number) {
     return `server:${serverId}`;
   }
