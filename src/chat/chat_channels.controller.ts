@@ -35,6 +35,20 @@ import { UpdateServerDto } from './dto/update-server.dto';
 export class ChatChannelsController {
   constructor(private readonly service: ChatChannelsService) {}
 
+  @ApiOperation({ summary: 'Kick a member from the server (admin only)' })
+  @ApiParam({ name: 'serverId', type: Number })
+  @ApiParam({ name: 'userId', type: Number })
+  @ApiResponse({ status: 200, description: 'Member kicked from server' })
+  @ApiResponse({ status: 400, description: 'Cannot kick another admin' })
+  @UseGuards(ChatServerAdminGuard)
+  @Delete('kick/:userId')
+  kickMember(
+    @Param('serverId', ParseIntPipe) serverId: number,
+    @Param('userId', ParseIntPipe) userId: number,
+  ) {
+    return this.service.kickMember(serverId, userId);
+  }
+
   @ApiOperation({ summary: 'Update chat server name (server admin only)' })
   @ApiParam({ name: 'serverId', type: Number })
   @ApiBody({ type: UpdateServerDto })

@@ -668,6 +668,55 @@ export class ChatChannelsService {
     return { success: true };
   }
 
+  async kickMember(serverId: number, targetUserId: number) {
+    const server = await this.prisma.chat_servers.findUnique({
+      where: { id: serverId },
+      select: { id: true },
+    });
+    if (!server) throw new NotFoundException('Chat server not found');
+
+    const targetMembership = await this.prisma.chat_memberships.findUnique({
+      where: {
+        chat_server_id_user_id: {
+          chat_server_id: serverId,
+          user_id: targetUserId,
+        },
+      },
+      select: { role: true },
+    });
+    if (!targetMembership) {
+      throw new NotFoundException('User is not a member of this server');
+    }
+    if (targetMembership.role === chat_role_type.admin) {
+      throw new BadRequestException('Cannot kick another admin');
+    }
+
+    // Remove all channel memberships and server membership in a transaction
+    const channels = await this.prisma.chat_channels.findMany({
+      where: { chat_servers_id: serverId },
+      select: { id: true },
+    });
+    const channelIds = channels.map((c) => c.id);
+
+    await this.prisma.$transaction(async (tx) => {
+      if (channelIds.length > 0) {
+        await tx.channel_memberships.deleteMany({
+          where: { channel_id: { in: channelIds }, user_id: targetUserId },
+        });
+      }
+      await tx.chat_memberships.delete({
+        where: {
+          chat_server_id_user_id: {
+            chat_server_id: serverId,
+            user_id: targetUserId,
+          },
+        },
+      });
+    });
+
+    return { success: true };
+  }
+
   async updateServer(serverId: number, data: { name: string }) {
     const server = await this.prisma.chat_servers.findUnique({
       where: { id: serverId },
