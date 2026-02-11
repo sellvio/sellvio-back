@@ -26,6 +26,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequestUser } from '../common/interfaces/request-user.interface';
 import { AddMemberDto } from './dto/add-member.dto';
 import { AddMembersDto } from './dto/add-members.dto';
+import { UpdateServerDto } from './dto/update-server.dto';
 
 @ApiTags('Chat Channels')
 @ApiBearerAuth('JWT-auth')
@@ -33,6 +34,19 @@ import { AddMembersDto } from './dto/add-members.dto';
 @Controller('chat-servers/:serverId/channels')
 export class ChatChannelsController {
   constructor(private readonly service: ChatChannelsService) {}
+
+  @ApiOperation({ summary: 'Update chat server name (server admin only)' })
+  @ApiParam({ name: 'serverId', type: Number })
+  @ApiBody({ type: UpdateServerDto })
+  @ApiResponse({ status: 200, description: 'Server name updated' })
+  @UseGuards(ChatServerAdminGuard)
+  @Patch('update-server')
+  updateServer(
+    @Param('serverId', ParseIntPipe) serverId: number,
+    @Body() dto: UpdateServerDto,
+  ) {
+    return this.service.updateServer(serverId, dto);
+  }
 
   @ApiOperation({ summary: 'List channels in a chat server' })
   @ApiParam({ name: 'serverId', type: Number })

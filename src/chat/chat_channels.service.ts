@@ -668,6 +668,19 @@ export class ChatChannelsService {
     return { success: true };
   }
 
+  async updateServer(serverId: number, data: { name: string }) {
+    const server = await this.prisma.chat_servers.findUnique({
+      where: { id: serverId },
+      select: { id: true },
+    });
+    if (!server) throw new NotFoundException('Chat server not found');
+
+    return this.prisma.chat_servers.update({
+      where: { id: serverId },
+      data: { name: data.name },
+    });
+  }
+
   async remove(serverId: number, channelId: number) {
     const existing = await this.prisma.chat_channels.findUnique({
       where: { id: channelId },
