@@ -122,6 +122,44 @@ export class ChatChannelsController {
   ) {
     return this.service.listChannelUsers(serverId, channelId, user.id);
   }
+  @ApiOperation({
+    summary:
+      'List server members available to invite to a channel (excludes existing channel members and requester)',
+  })
+  @ApiParam({ name: 'serverId', type: Number })
+  @ApiParam({ name: 'channelId', type: Number })
+  @ApiResponse({
+    status: 200,
+    description: 'Invitable members list',
+  })
+  @UseGuards(ChatServerAdminGuard)
+  @Get(':channelId/invitable-members')
+  listInvitableMembers(
+    @Param('serverId', ParseIntPipe) serverId: number,
+    @Param('channelId', ParseIntPipe) channelId: number,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.service.listInvitableMembers(serverId, channelId, user.id);
+  }
+
+  @ApiOperation({
+    summary: 'Invite a server member to a channel (server admin only)',
+  })
+  @ApiParam({ name: 'serverId', type: Number })
+  @ApiParam({ name: 'channelId', type: Number })
+  @ApiBody({ type: AddMemberDto })
+  @ApiResponse({ status: 200, description: 'User invited to channel' })
+  @UseGuards(ChatServerAdminGuard)
+  @Post(':channelId/invite')
+  inviteToChannel(
+    @Param('serverId', ParseIntPipe) serverId: number,
+    @Param('channelId', ParseIntPipe) channelId: number,
+    @Body() dto: AddMemberDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.service.inviteToChannel(serverId, channelId, dto.user_id, user.id);
+  }
+
   @ApiOperation({ summary: 'Update a channel' })
   @ApiParam({ name: 'serverId', type: Number })
   @ApiParam({ name: 'channelId', type: Number })

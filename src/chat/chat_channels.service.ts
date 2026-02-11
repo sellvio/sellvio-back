@@ -517,6 +517,157 @@ export class ChatChannelsService {
     return this.listServerMembers(serverId, requesterId);
   }
 
+  async listInvitableMembers(
+    serverId: number,
+    channelId: number,
+    requesterId: number,
+  ) {
+    const channel = await this.prisma.chat_channels.findUnique({
+      where: { id: channelId },
+      select: { id: true, chat_servers_id: true },
+    });
+    if (!channel || channel.chat_servers_id !== serverId) {
+      throw new NotFoundException('Channel not found in this server');
+    }
+
+    // Get all server members
+    const serverMembers = await this.prisma.chat_memberships.findMany({
+      where: { chat_server_id: serverId },
+      select: { user_id: true, role: true, joined_at: true },
+      orderBy: { joined_at: 'asc' },
+    });
+
+    // Get existing channel members
+    const channelMembers = await this.prisma.channel_memberships.findMany({
+      where: { channel_id: channelId },
+      select: { user_id: true },
+    });
+    const channelMemberIds = new Set(channelMembers.map((m) => m.user_id));
+
+    // Filter out channel members and the requester
+    const invitable = serverMembers.filter(
+      (m) => !channelMemberIds.has(m.user_id) && m.user_id !== requesterId,
+    );
+
+    if (invitable.length === 0) return [];
+
+    const userIds = invitable.map((m) => m.user_id);
+    const users = await this.prisma.users.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, email: true, user_type: true },
+    });
+
+    // Fetch profile info for richer response
+    const creatorIds = users
+      .filter((u) => u.user_type === user_type.creator)
+      .map((u) => u.id);
+    const businessIds = users
+      .filter((u) => u.user_type === user_type.business)
+      .map((u) => u.id);
+
+    const creatorProfiles =
+      creatorIds.length > 0
+        ? await this.prisma.creator_profiles.findMany({
+            where: { user_id: { in: creatorIds } },
+            select: { user_id: true, first_name: true, last_name: true, profile_image_url: true },
+          })
+        : [];
+    const businessProfiles =
+      businessIds.length > 0
+        ? await this.prisma.business_profiles.findMany({
+            where: { user_id: { in: businessIds } },
+            select: { user_id: true, company_name: true, logo_url: true },
+          })
+        : [];
+
+    const creatorProfileMap = new Map(creatorProfiles.map((p) => [p.user_id, p] as const));
+    const businessProfileMap = new Map(businessProfiles.map((p) => [p.user_id, p] as const));
+    const idToUser = new Map(users.map((u) => [u.id, u] as const));
+
+    return invitable.map((m) => {
+      const user = idToUser.get(m.user_id);
+      const creatorProfile = creatorProfileMap.get(m.user_id);
+      const businessProfile = businessProfileMap.get(m.user_id);
+      return {
+        user: {
+          id: m.user_id,
+          email: user?.email,
+          user_type: user?.user_type,
+          ...(creatorProfile
+            ? {
+                first_name: creatorProfile.first_name,
+                last_name: creatorProfile.last_name,
+                profile_image_url: creatorProfile.profile_image_url,
+              }
+            : {}),
+          ...(businessProfile
+            ? {
+                company_name: businessProfile.company_name,
+                logo_url: businessProfile.logo_url,
+              }
+            : {}),
+        },
+        role: m.role,
+        joined_at: m.joined_at,
+      };
+    });
+  }
+
+  async inviteToChannel(
+    serverId: number,
+    channelId: number,
+    userId: number,
+    invitedByUserId: number,
+  ) {
+    // Validate channel belongs to server
+    const channel = await this.prisma.chat_channels.findUnique({
+      where: { id: channelId },
+      select: { id: true, chat_servers_id: true },
+    });
+    if (!channel || channel.chat_servers_id !== serverId) {
+      throw new NotFoundException('Channel not found in this server');
+    }
+
+    // Validate user is a server member
+    const serverMembership = await this.prisma.chat_memberships.findUnique({
+      where: {
+        chat_server_id_user_id: {
+          chat_server_id: serverId,
+          user_id: userId,
+        },
+      },
+      select: { user_id: true },
+    });
+    if (!serverMembership) {
+      throw new BadRequestException('User is not a member of this server');
+    }
+
+    // Check if already a channel member
+    const existing = await this.prisma.channel_memberships.findUnique({
+      where: {
+        channel_id_user_id: { channel_id: channelId, user_id: userId },
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      return { success: true, message: 'User is already a member of this channel' };
+    }
+
+    // Add member
+    const roleId = await this.getChatRoleTypeId('user');
+    await this.prisma.channel_memberships.create({
+      data: {
+        channel_id: channelId,
+        user_id: userId,
+        role: chat_role_type.user,
+        role_id: roleId,
+        added_by: invitedByUserId,
+      },
+    });
+
+    return { success: true };
+  }
+
   async remove(serverId: number, channelId: number) {
     const existing = await this.prisma.chat_channels.findUnique({
       where: { id: channelId },
