@@ -8,13 +8,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateVideoDto } from './dto/create-video.dto';
 import { ReviewVideoDto } from './dto/review-video.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
-import { user_type, video_status, participation_status } from '@prisma/client';
 
 @Injectable()
 export class VideosService {
   // Cache for lookup table IDs
   private lookupCache: {
     videoStatuses?: Map<string, number>;
+    userTypes?: Map<string, number>;
+    participationStatuses?: Map<string, number>;
   } = {};
 
   constructor(private prisma: PrismaService) {}
@@ -29,12 +30,36 @@ export class VideosService {
     return this.lookupCache.videoStatuses.get(status) || null;
   }
 
+  private async getUserTypeId(type: string): Promise<number> {
+    if (!this.lookupCache.userTypes) {
+      const types = await this.prisma.user_types.findMany();
+      this.lookupCache.userTypes = new Map(
+        types.map((t) => [t.user_type, t.id]),
+      );
+    }
+    return this.lookupCache.userTypes.get(type) || 1;
+  }
+
+  private async getParticipationStatusId(
+    status: string,
+  ): Promise<number | null> {
+    if (!this.lookupCache.participationStatuses) {
+      const statuses = await this.prisma.participation_statuses.findMany();
+      this.lookupCache.participationStatuses = new Map(
+        statuses.map((s) => [s.participation_status, s.id]),
+      );
+    }
+    return this.lookupCache.participationStatuses.get(status) || null;
+  }
+
   async create(
     campaignId: number,
     creatorId: number,
     createVideoDto: CreateVideoDto,
   ) {
     // Verify creator is approved for this campaign
+    const approvedStatusId = await this.getParticipationStatusId('approved');
+
     const participation = await this.prisma.campaign_participants.findUnique({
       where: {
         campaign_id_creator_id: {
@@ -42,7 +67,8 @@ export class VideosService {
           creator_id: creatorId,
         },
       },
-      include: {
+      select: {
+        status_id: true,
         campaigns: true,
       },
     });
@@ -53,7 +79,7 @@ export class VideosService {
       );
     }
 
-    if (participation.status !== participation_status.approved) {
+    if (participation.status_id !== approvedStatusId) {
       throw new ForbiddenException('You must be approved to submit videos');
     }
 
@@ -103,7 +129,10 @@ export class VideosService {
     }
 
     if (filters?.status) {
-      where.status = filters.status;
+      const statusId = await this.getVideoStatusId(filters.status);
+      if (statusId) {
+        where.status_id = statusId;
+      }
     }
 
     const [videos, total] = await Promise.all([
@@ -239,7 +268,6 @@ export class VideosService {
     const updatedVideo = await this.prisma.campaign_videos.update({
       where: { id },
       data: {
-        status: reviewVideoDto.status,
         status_id: statusId,
         review_comments: reviewVideoDto.review_comments,
         reviewed_at: new Date(),
@@ -264,10 +292,21 @@ export class VideosService {
     return updatedVideo;
   }
 
-  async remove(id: number, userId: number, userType: user_type) {
+  async remove(id: number, userId: number, userTypeId: number) {
+    const [creatorTypeId, businessTypeId, approvedVideoStatusId] =
+      await Promise.all([
+        this.getUserTypeId('creator'),
+        this.getUserTypeId('business'),
+        this.getVideoStatusId('approved'),
+      ]);
+
     const video = await this.prisma.campaign_videos.findUnique({
       where: { id },
-      include: {
+      select: {
+        id: true,
+        creator_id: true,
+        status_id: true,
+        posted_to_social: true,
         campaigns: true,
       },
     });
@@ -278,8 +317,8 @@ export class VideosService {
 
     // Creators can delete their own videos, businesses can delete any video from their campaigns
     const canDelete =
-      (userType === user_type.creator && video.creator_id === userId) ||
-      (userType === user_type.business &&
+      (userTypeId === creatorTypeId && video.creator_id === userId) ||
+      (userTypeId === businessTypeId &&
         video.campaigns.business_id === userId);
 
     if (!canDelete) {
@@ -287,7 +326,7 @@ export class VideosService {
     }
 
     // Cannot delete approved videos that have been posted
-    if (video.status === video_status.approved && video.posted_to_social) {
+    if (video.status_id === approvedVideoStatusId && video.posted_to_social) {
       throw new BadRequestException(
         'Cannot delete videos that have been posted to social media',
       );

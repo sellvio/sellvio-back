@@ -4,14 +4,14 @@ import {
   IsArray,
   IsDate,
   IsEmail,
-  IsEnum,
+  IsIn,
   IsOptional,
   IsInt,
   IsString,
   Length,
   MinLength,
 } from 'class-validator';
-import { user_type, creator_type, social_platform } from '@prisma/client';
+const USER_TYPE_VALUES = ['business', 'creator'];
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class RegisterDto {
@@ -29,9 +29,9 @@ export class RegisterDto {
   @Length(12, 72)
   password!: string;
 
-  @ApiProperty({ enum: user_type, example: user_type.creator })
-  @IsEnum(user_type)
-  user_type!: user_type;
+  @ApiProperty({ enum: USER_TYPE_VALUES, example: 'creator' })
+  @IsIn(USER_TYPE_VALUES)
+  user_type!: string;
 
   @ApiPropertyOptional()
   @IsOptional()

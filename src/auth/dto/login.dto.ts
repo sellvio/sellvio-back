@@ -1,12 +1,13 @@
 import {
   IsEmail,
-  IsEnum,
+  IsIn,
   IsOptional,
   IsString,
   MinLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { user_type } from '@prisma/client';
+
+const USER_TYPE_VALUES = ['business', 'creator'];
 
 export class LoginDto {
   @ApiProperty({ example: 'user@example.com' })
@@ -19,10 +20,10 @@ export class LoginDto {
   password: string;
 
   @ApiPropertyOptional({
-    enum: user_type,
+    enum: USER_TYPE_VALUES,
     description: 'Optional user type to assert on login',
   })
   @IsOptional()
-  @IsEnum(user_type)
-  user_type?: user_type;
+  @IsIn(USER_TYPE_VALUES)
+  user_type?: string;
 }

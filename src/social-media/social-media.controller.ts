@@ -24,7 +24,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequestUser } from '../common/interfaces/request-user.interface';
-import { user_type, social_platform } from '@prisma/client';
+import { social_platform } from '@prisma/client';
 
 @ApiTags('Social Media')
 @ApiBearerAuth()
@@ -43,7 +43,7 @@ export class SocialMediaController {
     description: 'Only creators can connect social media accounts',
   })
   @UseGuards(RolesGuard)
-  @Roles(user_type.creator)
+  @Roles('creator')
   @Post('connect')
   connectAccount(
     @Body() connectDto: ConnectSocialAccountDto,
@@ -62,7 +62,7 @@ export class SocialMediaController {
     description: 'Only creators can view social media accounts',
   })
   @UseGuards(RolesGuard)
-  @Roles(user_type.creator)
+  @Roles('creator')
   @Get('accounts')
   getConnectedAccounts(@CurrentUser() user: RequestUser) {
     return this.socialMediaService.getConnectedAccounts(user.id);
@@ -75,7 +75,7 @@ export class SocialMediaController {
   })
   @ApiResponse({ status: 404, description: 'Social media account not found' })
   @UseGuards(RolesGuard)
-  @Roles(user_type.creator)
+  @Roles('creator')
   @Delete('disconnect/:platform')
   disconnectAccount(
     @Param('platform') platform: social_platform,
@@ -88,7 +88,7 @@ export class SocialMediaController {
   @ApiResponse({ status: 200, description: 'Token refreshed successfully' })
   @ApiResponse({ status: 404, description: 'Social media account not found' })
   @UseGuards(RolesGuard)
-  @Roles(user_type.creator)
+  @Roles('creator')
   @Patch('refresh-token/:platform')
   refreshToken(
     @Param('platform') platform: social_platform,
@@ -113,7 +113,7 @@ export class SocialMediaController {
   })
   @ApiResponse({ status: 404, description: 'Social media account not found' })
   @UseGuards(RolesGuard)
-  @Roles(user_type.creator)
+  @Roles('creator')
   @Patch('sync/:platform')
   syncAccountData(
     @Param('platform') platform: social_platform,
@@ -133,7 +133,7 @@ export class SocialMediaController {
   @ApiQuery({ name: 'platform', required: false, enum: social_platform })
   @ApiResponse({ status: 200, description: 'Analytics retrieved successfully' })
   @UseGuards(RolesGuard)
-  @Roles(user_type.creator)
+  @Roles('creator')
   @Get('analytics')
   getAccountAnalytics(
     @CurrentUser() user: RequestUser,
@@ -146,7 +146,7 @@ export class SocialMediaController {
   @ApiResponse({ status: 200, description: 'Social post updated successfully' })
   @ApiResponse({ status: 404, description: 'Video not found' })
   @UseGuards(RolesGuard)
-  @Roles(user_type.creator)
+  @Roles('creator')
   @Post('videos/:videoId/social-post')
   updateVideoSocialPost(
     @Param('videoId', ParseIntPipe) videoId: number,

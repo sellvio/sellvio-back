@@ -6,20 +6,36 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConnectSocialAccountDto } from './dto/connect-social-account.dto';
-import { user_type, social_platform } from '@prisma/client';
+import { social_platform } from '@prisma/client';
 
 @Injectable()
 export class SocialMediaService {
+  // Cache for lookup table IDs
+  private lookupCache: {
+    userTypes?: Map<string, number>;
+  } = {};
+
   constructor(private prisma: PrismaService) {}
+
+  private async getUserTypeId(type: string): Promise<number> {
+    if (!this.lookupCache.userTypes) {
+      const types = await this.prisma.user_types.findMany();
+      this.lookupCache.userTypes = new Map(
+        types.map((t) => [t.user_type, t.id]),
+      );
+    }
+    return this.lookupCache.userTypes.get(type) || 1;
+  }
 
   async connectAccount(creatorId: number, connectDto: ConnectSocialAccountDto) {
     // Verify user is a creator
+    const creatorTypeId = await this.getUserTypeId('creator');
     const user = await this.prisma.users.findUnique({
       where: { id: creatorId },
-      include: { creator_profiles: true },
+      select: { id: true, user_type_id: true, creator_profiles: true },
     });
 
-    if (!user || user.user_type !== user_type.creator) {
+    if (!user || user.user_type_id !== creatorTypeId) {
       throw new ForbiddenException(
         'Only creators can connect social media accounts',
       );
@@ -82,11 +98,13 @@ export class SocialMediaService {
   }
 
   async getConnectedAccounts(creatorId: number) {
+    const creatorTypeId = await this.getUserTypeId('creator');
     const user = await this.prisma.users.findUnique({
       where: { id: creatorId },
+      select: { id: true, user_type_id: true },
     });
 
-    if (!user || user.user_type !== user_type.creator) {
+    if (!user || user.user_type_id !== creatorTypeId) {
       throw new ForbiddenException(
         'Only creators can view social media accounts',
       );

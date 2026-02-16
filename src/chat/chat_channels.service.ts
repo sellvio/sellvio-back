@@ -5,12 +5,6 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import {
-  channel_type,
-  chat_role_type,
-  user_type,
-  participation_status,
-} from '@prisma/client';
 
 @Injectable()
 export class ChatChannelsService {
@@ -18,6 +12,8 @@ export class ChatChannelsService {
   private lookupCache: {
     chatRoleTypes?: Map<string, number>;
     channelTypes?: Map<string, number>;
+    userTypes?: Map<string, number>;
+    participationStatuses?: Map<string, number>;
   } = {};
 
   constructor(private readonly prisma: PrismaService) {}
@@ -42,6 +38,28 @@ export class ChatChannelsService {
     return this.lookupCache.channelTypes.get(type) || null;
   }
 
+  private async getUserTypeId(type: string): Promise<number | null> {
+    if (!this.lookupCache.userTypes) {
+      const types = await this.prisma.user_types.findMany();
+      this.lookupCache.userTypes = new Map(
+        types.map((t) => [t.user_type, t.id]),
+      );
+    }
+    return this.lookupCache.userTypes.get(type) || null;
+  }
+
+  private async getParticipationStatusId(
+    status: string,
+  ): Promise<number | null> {
+    if (!this.lookupCache.participationStatuses) {
+      const statuses = await this.prisma.participation_statuses.findMany();
+      this.lookupCache.participationStatuses = new Map(
+        statuses.map((s) => [s.participation_status, s.id]),
+      );
+    }
+    return this.lookupCache.participationStatuses.get(status) || null;
+  }
+
   async listVisible(serverId: number, userId: number) {
     const server = await this.prisma.chat_servers.findUnique({
       where: { id: serverId },
@@ -49,6 +67,7 @@ export class ChatChannelsService {
     });
     if (!server) throw new NotFoundException('Chat server not found');
 
+    const adminRoleId = await this.getChatRoleTypeId('admin');
     const campaign = await this.prisma.campaigns.findUnique({
       where: { id: server.campaign_id },
       select: { business_id: true },
@@ -57,10 +76,10 @@ export class ChatChannelsService {
       where: {
         chat_server_id_user_id: { chat_server_id: serverId, user_id: userId },
       },
-      select: { role: true },
+      select: { role_id: true },
     });
     const isAdmin =
-      membership?.role === 'admin' || campaign?.business_id === userId;
+      membership?.role_id === adminRoleId || campaign?.business_id === userId;
     if (isAdmin) {
       return this.prisma.chat_channels.findMany({
         where: { chat_servers_id: serverId },
@@ -68,6 +87,7 @@ export class ChatChannelsService {
       });
     }
 
+    const approvedStatusId = await this.getParticipationStatusId('approved');
     const participant = await this.prisma.campaign_participants.findUnique({
       where: {
         campaign_id_creator_id: {
@@ -75,9 +95,9 @@ export class ChatChannelsService {
           creator_id: userId,
         },
       },
-      select: { status: true },
+      select: { status_id: true },
     });
-    const isApprovedParticipant = participant?.status === 'approved';
+    const isApprovedParticipant = participant?.status_id === approvedStatusId;
     const isServerMember = !!membership;
     if (!isApprovedParticipant && !isServerMember) {
       throw new NotFoundException('Chat server not found');
@@ -137,7 +157,6 @@ export class ChatChannelsService {
         chat_servers_id: serverId,
         name: data.name,
         // Force default channel type to 'other' regardless of input
-        channel_type: channel_type.other,
         channel_type_id: channelTypeId,
         description: data.description ?? null,
       },
@@ -220,14 +239,16 @@ export class ChatChannelsService {
       throw new NotFoundException('Chat server not found');
     }
     // Validate user is a creator
+    const creatorTypeId = await this.getUserTypeId('creator');
     const user = await this.prisma.users.findUnique({
       where: { id: creatorUserId },
-      select: { id: true, user_type: true },
+      select: { id: true, user_type_id: true },
     });
-    if (!user || user.user_type !== user_type.creator) {
+    if (!user || user.user_type_id !== creatorTypeId) {
       throw new BadRequestException('Only creators can be added to channels');
     }
     // Validate approved participation in campaign
+    const approvedStatusId = await this.getParticipationStatusId('approved');
     const participation = await this.prisma.campaign_participants.findUnique({
       where: {
         campaign_id_creator_id: {
@@ -235,11 +256,11 @@ export class ChatChannelsService {
           creator_id: creatorUserId,
         },
       },
-      select: { status: true },
+      select: { status_id: true },
     });
     if (
       !participation ||
-      participation.status !== participation_status.approved
+      participation.status_id !== approvedStatusId
     ) {
       throw new BadRequestException(
         'Creator must be an approved participant of the campaign',
@@ -264,7 +285,6 @@ export class ChatChannelsService {
       data: {
         channel_id: channelId,
         user_id: creatorUserId,
-        role: chat_role_type.user,
         role_id: roleId,
         added_by: addedByUserId,
       },
@@ -298,20 +318,22 @@ export class ChatChannelsService {
     if (uniqueIds.length === 0) return { added: 0, skipped: [], errors: [] };
 
     // Fetch users that are creators
+    const creatorTypeId = await this.getUserTypeId('creator');
     const users = await this.prisma.users.findMany({
       where: { id: { in: uniqueIds } },
-      select: { id: true, user_type: true },
+      select: { id: true, user_type_id: true },
     });
     const creatorIds = new Set(
-      users.filter((u) => u.user_type === user_type.creator).map((u) => u.id),
+      users.filter((u) => u.user_type_id === creatorTypeId).map((u) => u.id),
     );
 
     // Fetch approved participants for campaign
+    const approvedStatusId = await this.getParticipationStatusId('approved');
     const participations = await this.prisma.campaign_participants.findMany({
       where: {
         campaign_id: server.campaign_id,
         creator_id: { in: Array.from(creatorIds) },
-        status: participation_status.approved,
+        status_id: approvedStatusId,
       },
       select: { creator_id: true },
     });
@@ -344,7 +366,6 @@ export class ChatChannelsService {
         data: toInsert.map((uid) => ({
           channel_id: channelId,
           user_id: uid,
-          role: chat_role_type.user,
           role_id: roleId,
           added_by: addedByUserId,
         })),
@@ -374,7 +395,7 @@ export class ChatChannelsService {
             user_id: requesterId,
           },
         },
-        select: { role: true },
+        select: { role_id: true },
       }),
       this.prisma.campaigns.findUnique({
         where: { id: server.campaign_id },
@@ -392,7 +413,7 @@ export class ChatChannelsService {
       orderBy: { joined_at: 'asc' },
       select: {
         user_id: true,
-        role: true,
+        role_id: true,
         joined_at: true,
       },
     });
@@ -401,13 +422,13 @@ export class ChatChannelsService {
       userIds.length > 0
         ? await this.prisma.users.findMany({
             where: { id: { in: userIds } },
-            select: { id: true, email: true, user_type: true },
+            select: { id: true, email: true, user_type_id: true },
           })
         : [];
     const idToUser = new Map(users.map((u) => [u.id, u]));
     return memberships.map((m) => ({
       user: idToUser.get(m.user_id) || { id: m.user_id },
-      role: m.role,
+      role_id: m.role_id,
       joined_at: m.joined_at,
     }));
   }
@@ -437,6 +458,7 @@ export class ChatChannelsService {
       where: { id: serverId },
       select: { campaign_id: true },
     });
+    const adminRoleId = await this.getChatRoleTypeId('admin');
     const [serverMembership, campaign] = await Promise.all([
       this.prisma.chat_memberships.findUnique({
         where: {
@@ -445,7 +467,7 @@ export class ChatChannelsService {
             user_id: requesterId,
           },
         },
-        select: { role: true },
+        select: { role_id: true },
       }),
       this.prisma.campaigns.findUnique({
         where: { id: server?.campaign_id || 0 },
@@ -461,7 +483,7 @@ export class ChatChannelsService {
         },
         select: { user_id: true },
       });
-      const isServerAdmin = serverMembership?.role === chat_role_type.admin;
+      const isServerAdmin = serverMembership?.role_id === adminRoleId;
       if (!cm && !isServerAdmin && !isOwner) {
         throw new ForbiddenException(
           'You are not allowed to view this channel users',
@@ -469,13 +491,13 @@ export class ChatChannelsService {
       }
       const cms = await this.prisma.channel_memberships.findMany({
         where: { channel_id: channelId },
-        select: { user_id: true, role: true, added_at: true },
+        select: { user_id: true, role_id: true, added_at: true },
         orderBy: { added_at: 'asc' },
       });
       // Also include server admins (access to all channels)
       const adminMemberships = await this.prisma.chat_memberships.findMany({
-        where: { chat_server_id: serverId, role: chat_role_type.admin },
-        select: { user_id: true, role: true, joined_at: true },
+        where: { chat_server_id: serverId, role_id: adminRoleId },
+        select: { user_id: true, role_id: true, joined_at: true },
         orderBy: { joined_at: 'asc' },
       });
       const channelMemberIds = new Set(cms.map((m) => m.user_id));
@@ -492,18 +514,18 @@ export class ChatChannelsService {
         unionIds.length > 0
           ? await this.prisma.users.findMany({
               where: { id: { in: unionIds } },
-              select: { id: true, email: true, user_type: true },
+              select: { id: true, email: true, user_type_id: true },
             })
           : [];
       const idToUser = new Map(users.map((u) => [u.id, u]));
       const channelResults = cms.map((m) => ({
         user: idToUser.get(m.user_id) || { id: m.user_id },
-        role: m.role,
+        role_id: m.role_id,
         joined_at: m.added_at,
       }));
       const adminResults = adminOnly.map((m) => ({
         user: idToUser.get(m.user_id) || { id: m.user_id },
-        role: m.role,
+        role_id: m.role_id,
         joined_at: m.joined_at,
       }));
       return [...channelResults, ...adminResults];
@@ -533,7 +555,7 @@ export class ChatChannelsService {
     // Get all server members
     const serverMembers = await this.prisma.chat_memberships.findMany({
       where: { chat_server_id: serverId },
-      select: { user_id: true, role: true, joined_at: true },
+      select: { user_id: true, role_id: true, joined_at: true },
       orderBy: { joined_at: 'asc' },
     });
 
@@ -554,15 +576,17 @@ export class ChatChannelsService {
     const userIds = invitable.map((m) => m.user_id);
     const users = await this.prisma.users.findMany({
       where: { id: { in: userIds } },
-      select: { id: true, email: true, user_type: true },
+      select: { id: true, email: true, user_type_id: true },
     });
 
     // Fetch profile info for richer response
+    const creatorTypeId = await this.getUserTypeId('creator');
+    const businessTypeId = await this.getUserTypeId('business');
     const creatorIds = users
-      .filter((u) => u.user_type === user_type.creator)
+      .filter((u) => u.user_type_id === creatorTypeId)
       .map((u) => u.id);
     const businessIds = users
-      .filter((u) => u.user_type === user_type.business)
+      .filter((u) => u.user_type_id === businessTypeId)
       .map((u) => u.id);
 
     const creatorProfiles =
@@ -592,7 +616,7 @@ export class ChatChannelsService {
         user: {
           id: m.user_id,
           email: user?.email,
-          user_type: user?.user_type,
+          user_type_id: user?.user_type_id,
           ...(creatorProfile
             ? {
                 first_name: creatorProfile.first_name,
@@ -607,7 +631,7 @@ export class ChatChannelsService {
               }
             : {}),
         },
-        role: m.role,
+        role_id: m.role_id,
         joined_at: m.joined_at,
       };
     });
@@ -659,7 +683,6 @@ export class ChatChannelsService {
       data: {
         channel_id: channelId,
         user_id: userId,
-        role: chat_role_type.user,
         role_id: roleId,
         added_by: invitedByUserId,
       },
@@ -675,6 +698,7 @@ export class ChatChannelsService {
     });
     if (!server) throw new NotFoundException('Chat server not found');
 
+    const adminRoleId = await this.getChatRoleTypeId('admin');
     const targetMembership = await this.prisma.chat_memberships.findUnique({
       where: {
         chat_server_id_user_id: {
@@ -682,12 +706,12 @@ export class ChatChannelsService {
           user_id: targetUserId,
         },
       },
-      select: { role: true },
+      select: { role_id: true },
     });
     if (!targetMembership) {
       throw new NotFoundException('User is not a member of this server');
     }
-    if (targetMembership.role === chat_role_type.admin) {
+    if (targetMembership.role_id === adminRoleId) {
       throw new BadRequestException('Cannot kick another admin');
     }
 

@@ -1,7 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { channel_type } from '@prisma/client';
 import {
-  IsEnum,
   IsIn,
   IsOptional,
   IsString,

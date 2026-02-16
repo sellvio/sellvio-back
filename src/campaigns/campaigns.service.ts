@@ -8,12 +8,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateCampaignDto } from './dto/create-campaign.dto';
 import { UpdateCampaignDto } from './dto/update-campaign.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
-import {
-  user_type,
-  campaign_status,
-  participation_status,
-  chat_role_type,
-} from '@prisma/client';
 
 @Injectable()
 export class CampaignsService {
@@ -25,6 +19,7 @@ export class CampaignsService {
     creatorTypes?: Map<string, number>;
     chatRoleTypes?: Map<string, number>;
     userTypes?: Map<string, number>;
+    videoStatuses?: Map<string, number>;
   } = {};
 
   constructor(private prisma: PrismaService) {}
@@ -84,14 +79,24 @@ export class CampaignsService {
     return this.lookupCache.chatRoleTypes.get(role) || null;
   }
 
-  private async getUserTypeId(type: string): Promise<number | null> {
+  private async getUserTypeId(type: string): Promise<number> {
     if (!this.lookupCache.userTypes) {
       const types = await this.prisma.user_types.findMany();
       this.lookupCache.userTypes = new Map(
         types.map((t) => [t.user_type, t.id]),
       );
     }
-    return this.lookupCache.userTypes.get(type) || null;
+    return this.lookupCache.userTypes.get(type) ?? 0;
+  }
+
+  private async getVideoStatusId(status: string): Promise<number | null> {
+    if (!this.lookupCache.videoStatuses) {
+      const statuses = await this.prisma.video_statuses.findMany();
+      this.lookupCache.videoStatuses = new Map(
+        statuses.map((s) => [s.video_status, s.id]),
+      );
+    }
+    return this.lookupCache.videoStatuses.get(status) || null;
   }
 
   async searchCreatorsByName(
@@ -124,11 +129,14 @@ export class CampaignsService {
             ],
           }))
         : [];
+
+    const creatorUserTypeId = await this.getUserTypeId('creator');
+
     const [rows, total] = await Promise.all([
       this.prisma.creator_profiles.findMany({
         where: {
           AND: andClauses,
-          users: { user_type: user_type.creator },
+          users: { user_type_id: creatorUserTypeId },
         },
         select: {
           user_id: true,
@@ -148,7 +156,7 @@ export class CampaignsService {
       this.prisma.creator_profiles.count({
         where: {
           AND: andClauses,
-          users: { user_type: user_type.creator },
+          users: { user_type_id: creatorUserTypeId },
         },
       }),
     ]);
@@ -290,7 +298,10 @@ export class CampaignsService {
     const where: any = {};
 
     if (filters?.status) {
-      where.status = filters.status;
+      const statusId = await this.getCampaignStatusId(filters.status);
+      if (statusId) {
+        where.status_id = statusId;
+      }
     }
 
     if (filters?.business_id) {
@@ -299,8 +310,11 @@ export class CampaignsService {
 
     // Filter by creator types (campaigns that target any of the specified creator types)
     if (filters?.creator_types && filters.creator_types.length > 0) {
-      where.target_creator_types = {
-        hasSome: filters.creator_types,
+      const creatorTypeIds = await this.getCreatorTypeIds(
+        filters.creator_types,
+      );
+      where.target_creator_types_id = {
+        hasSome: creatorTypeIds,
       };
     }
 
@@ -376,6 +390,8 @@ export class CampaignsService {
   }
 
   async findOne(id: number) {
+    const approvedVideoStatusId = await this.getVideoStatusId('approved');
+
     const campaign = await this.prisma.campaigns.findUnique({
       where: { id },
       include: {
@@ -422,7 +438,7 @@ export class CampaignsService {
         },
         campaign_videos: {
           where: {
-            status: 'approved',
+            status_id: approvedVideoStatusId,
           },
           select: {
             id: true,
@@ -471,17 +487,20 @@ export class CampaignsService {
     }
 
     // Determine access level
+    const adminRoleId = await this.getChatRoleTypeId('admin');
     const serverMembership = await this.prisma.chat_memberships.findUnique({
       where: {
         chat_server_id_user_id: { chat_server_id: server.id, user_id: userId },
       },
-      select: { role: true },
+      select: { role_id: true },
     });
     const isAdmin =
-      serverMembership?.role === 'admin' || campaign.business_id === userId;
+      serverMembership?.role_id === adminRoleId ||
+      campaign.business_id === userId;
 
     if (!isAdmin) {
       // Ensure user is campaign participant (approved) or at least a member of the server
+      const approvedStatusId = await this.getParticipationStatusId('approved');
       const participation = await this.prisma.campaign_participants.findUnique({
         where: {
           campaign_id_creator_id: {
@@ -489,10 +508,10 @@ export class CampaignsService {
             creator_id: userId,
           },
         },
-        select: { status: true },
+        select: { status_id: true },
       });
       const isApprovedParticipant =
-        participation?.status === participation_status.approved;
+        participation?.status_id === approvedStatusId;
       const isServerMember = !!serverMembership;
 
       if (!isApprovedParticipant && !isServerMember) {
@@ -637,7 +656,8 @@ export class CampaignsService {
       throw new ForbiddenException('You can only delete your own campaigns');
     }
 
-    if (campaign.status === campaign_status.active) {
+    const activeCampaignStatusId = await this.getCampaignStatusId('active');
+    if (campaign.status_id === activeCampaignStatusId) {
       throw new BadRequestException('Cannot delete active campaigns');
     }
 
@@ -666,23 +686,25 @@ export class CampaignsService {
 
   async participate(campaignId: number, creatorId: number) {
     // Verify user is a creator
+    const creatorUserTypeId = await this.getUserTypeId('creator');
     const user = await this.prisma.users.findUnique({
       where: { id: creatorId },
       include: { creator_profiles: true },
     });
 
-    if (!user || user.user_type !== user_type.creator) {
+    if (!user || user.user_type_id !== creatorUserTypeId) {
       throw new ForbiddenException(
         'Only creators can participate in campaigns',
       );
     }
 
     // Check if campaign exists and is active
+    const activeCampaignStatusId = await this.getCampaignStatusId('active');
     const campaign = await this.prisma.campaigns.findUnique({
       where: { id: campaignId },
       select: {
         id: true,
-        status: true,
+        status_id: true,
         business_id: true,
         chat_type: true,
       },
@@ -692,11 +714,15 @@ export class CampaignsService {
       throw new NotFoundException('Campaign not found');
     }
 
-    if (campaign.status !== campaign_status.active) {
+    if (campaign.status_id !== activeCampaignStatusId) {
       throw new BadRequestException('Campaign is not accepting participants');
     }
 
     // Check if already participating
+    const pendingStatusId = await this.getParticipationStatusId('pending');
+    const approvedStatusId = await this.getParticipationStatusId('approved');
+    const rejectedStatusId = await this.getParticipationStatusId('rejected');
+
     const existingParticipation =
       await this.prisma.campaign_participants.findUnique({
         where: {
@@ -708,17 +734,17 @@ export class CampaignsService {
       });
 
     if (existingParticipation) {
-      if (existingParticipation.status === participation_status.pending) {
+      if (existingParticipation.status_id === pendingStatusId) {
         throw new BadRequestException(
           'Your participation request is already pending approval',
         );
       }
-      if (existingParticipation.status === participation_status.approved) {
+      if (existingParticipation.status_id === approvedStatusId) {
         throw new BadRequestException(
           'You are already participating in this campaign',
         );
       }
-      if (existingParticipation.status === participation_status.rejected) {
+      if (existingParticipation.status_id === rejectedStatusId) {
         throw new BadRequestException(
           'Your participation request was previously rejected',
         );
@@ -737,9 +763,6 @@ export class CampaignsService {
       data: {
         campaign_id: campaignId,
         creator_id: creatorId,
-        status: isPublic
-          ? participation_status.approved
-          : participation_status.pending,
         status_id: participationStatusId,
         approved_at: isPublic ? new Date() : null,
         approved_by: isPublic ? campaign.business_id : null,
@@ -771,7 +794,6 @@ export class CampaignsService {
           create: {
             chat_server_id: server.id,
             user_id: creatorId,
-            role: chat_role_type.user,
             role_id: chatRoleId,
           },
         });
@@ -788,7 +810,7 @@ export class CampaignsService {
     campaignId: number,
     creatorId: number,
     businessId: number,
-    status: participation_status,
+    status: string,
     rejectionReason?: string,
   ) {
     const campaign = await this.prisma.campaigns.findUnique({
@@ -818,6 +840,8 @@ export class CampaignsService {
 
     // Get the status_id from lookup table
     const statusId = await this.getParticipationStatusId(status);
+    const approvedStatusId = await this.getParticipationStatusId('approved');
+    const rejectedStatusId = await this.getParticipationStatusId('rejected');
 
     const updatedParticipation = await this.prisma.campaign_participants.update(
       {
@@ -828,14 +852,11 @@ export class CampaignsService {
           },
         },
         data: {
-          status,
           status_id: statusId,
-          approved_at:
-            status === participation_status.approved ? new Date() : null,
-          approved_by:
-            status === participation_status.approved ? businessId : null,
+          approved_at: statusId === approvedStatusId ? new Date() : null,
+          approved_by: statusId === approvedStatusId ? businessId : null,
           rejection_reason:
-            status === participation_status.rejected ? rejectionReason : null,
+            statusId === rejectedStatusId ? rejectionReason : null,
         },
         include: {
           creator_profiles: {
@@ -850,7 +871,7 @@ export class CampaignsService {
     );
 
     // If approved now, ensure server membership exists
-    if (status === participation_status.approved) {
+    if (statusId === approvedStatusId) {
       const chatRoleId = await this.getChatRoleTypeId('user');
       const server = await this.prisma.chat_servers.findFirst({
         where: { campaign_id: campaignId },
@@ -869,7 +890,6 @@ export class CampaignsService {
             chat_server_id: server.id,
             role_id: chatRoleId,
             user_id: creatorId,
-            role: chat_role_type.user,
           },
         });
       }
@@ -881,7 +901,7 @@ export class CampaignsService {
   async listParticipationRequests(
     campaignId: number,
     businessId: number,
-    status?: participation_status,
+    status?: string,
   ) {
     const campaign = await this.prisma.campaigns.findUnique({
       where: { id: campaignId },
@@ -897,7 +917,10 @@ export class CampaignsService {
     }
     const where: any = { campaign_id: campaignId };
     if (status) {
-      where.status = status;
+      const statusId = await this.getParticipationStatusId(status);
+      if (statusId) {
+        where.status_id = statusId;
+      }
     }
     return this.prisma.campaign_participants.findMany({
       where,
@@ -978,12 +1001,13 @@ export class CampaignsService {
 
   async addCreatorToFavorites(businessId: number, creatorId: number) {
     // Verify user is a creator
+    const creatorUserTypeId = await this.getUserTypeId('creator');
     const creator = await this.prisma.users.findUnique({
       where: { id: creatorId },
-      select: { id: true, user_type: true },
+      select: { id: true, user_type_id: true },
     });
 
-    if (!creator || creator.user_type !== user_type.creator) {
+    if (!creator || creator.user_type_id !== creatorUserTypeId) {
       throw new BadRequestException('User is not a creator');
     }
 
@@ -1078,8 +1102,10 @@ export class CampaignsService {
           }))
         : [];
 
+    const creatorUserTypeId = await this.getUserTypeId('creator');
+
     const baseWhere: any = {
-      users: { user_type: user_type.creator },
+      users: { user_type_id: creatorUserTypeId },
     };
 
     if (searchClauses.length > 0) {
@@ -1097,7 +1123,9 @@ export class CampaignsService {
 
     // Filter by creator types
     if (filters.creatorTypes && filters.creatorTypes.length > 0) {
-      baseWhere.creator_type = { in: filters.creatorTypes };
+      const creatorTypeIds = await this.getCreatorTypeIds(filters.creatorTypes);
+      console.log(creatorTypeIds);
+      baseWhere.creator_type_id = { in: creatorTypeIds };
     }
 
     // Filter by platforms (creators who have connected these platforms)
@@ -1140,7 +1168,7 @@ export class CampaignsService {
           last_name: true,
           nickname: true,
           profile_image_url: true,
-          creator_type: true,
+          creator_type_id: true,
           users: {
             select: {
               email: true,
@@ -1178,7 +1206,7 @@ export class CampaignsService {
       last_name: r.last_name,
       nickname: r.nickname,
       profile_image_url: r.profile_image_url,
-      creator_type: r.creator_type,
+      creator_type_id: r.creator_type_id,
       platforms: r.social_media_accounts.map((s) => s.platform),
       tags: r.creator_tags.map((t) => t.tags.name),
       is_favorite: favoriteIds.has(r.user_id),

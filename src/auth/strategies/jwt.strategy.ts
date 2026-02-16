@@ -20,7 +20,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       select: {
         id: true,
         email: true,
-        user_type: true,
+        user_type_id: true,
         email_verified: true,
       },
     });
@@ -29,14 +29,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('User not found');
     }
 
-    // if (!user.email_verified) {
-    //   throw new UnauthorizedException('Email not verified');
-    // }
-
     return {
       id: user.id,
       email: user.email,
-      user_type: user.user_type!,
+      user_type_id: user.user_type_id,
       email_verified: !!user.email_verified,
     };
   }

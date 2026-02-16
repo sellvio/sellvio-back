@@ -33,11 +33,9 @@ import { IsVerifiedGuard } from '../common/guards/is-verified.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequestUser } from '../common/interfaces/request-user.interface';
-import {
-  user_type,
-  campaign_status,
-  participation_status,
-} from '@prisma/client';
+// Enum string values for Swagger documentation (migrated from Prisma enums to lookup tables)
+const CAMPAIGN_STATUS_VALUES = ['draft', 'active', 'paused', 'completed', 'cancelled'];
+const PARTICIPATION_STATUS_VALUES = ['pending', 'approved', 'rejected'];
 import { CampaignAssetsMulterInterceptor } from '../common/interceptors/campaign-assets.interceptor';
 import { UseInterceptors } from '@nestjs/common';
 import {
@@ -104,7 +102,7 @@ export class CampaignsController {
     },
   })
   @UseGuards(RolesGuard, IsVerifiedGuard)
-  @Roles(user_type.business)
+  @Roles('business')
   @Post()
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -277,9 +275,9 @@ export class CampaignsController {
   @ApiQuery({
     name: 'status',
     required: false,
-    enum: campaign_status,
+    enum: CAMPAIGN_STATUS_VALUES,
     description: 'Filter campaigns by status',
-    example: campaign_status.active,
+    example: 'active',
   })
   @ApiQuery({
     name: 'business_id',
@@ -442,7 +440,7 @@ export class CampaignsController {
     description: 'Campaign or chat server not found',
   })
   @UseGuards(RolesGuard)
-  @Roles(user_type.business)
+  @Roles('business')
   @Patch(':id/chat-server')
   updateChatServer(
     @Param('id', ParseIntPipe) id: number,
@@ -512,7 +510,7 @@ export class CampaignsController {
     },
   })
   @UseGuards(RolesGuard)
-  @Roles(user_type.business)
+  @Roles('business')
   @Patch(':id')
   update(
     @Param('id', ParseIntPipe) id: number,
@@ -579,7 +577,7 @@ export class CampaignsController {
     },
   })
   @UseGuards(RolesGuard)
-  @Roles(user_type.business)
+  @Roles('business')
   @Delete(':id')
   remove(
     @Param('id', ParseIntPipe) id: number,
@@ -643,7 +641,7 @@ export class CampaignsController {
     },
   })
   @UseGuards(RolesGuard)
-  @Roles(user_type.creator)
+  @Roles('creator')
   @Post(':id/participate')
   participate(
     @Param('id', ParseIntPipe) id: number,
@@ -665,7 +663,7 @@ export class CampaignsController {
   @ApiQuery({
     name: 'status',
     required: false,
-    enum: participation_status,
+    enum: PARTICIPATION_STATUS_VALUES,
     description: 'Filter by participation status',
   })
   @ApiResponse({
@@ -673,12 +671,12 @@ export class CampaignsController {
     description: 'Participation requests/participants returned',
   })
   @UseGuards(RolesGuard)
-  @Roles(user_type.business)
+  @Roles('business')
   @Get(':id/participation-requests')
   listParticipationRequests(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: RequestUser,
-    @Query('status') status?: participation_status,
+    @Query('status') status?: string,
   ) {
     return this.campaignsService.listParticipationRequests(id, user.id, status);
   }
@@ -747,13 +745,13 @@ export class CampaignsController {
     },
   })
   @UseGuards(RolesGuard)
-  @Roles(user_type.business)
+  @Roles('business')
   @Patch(':campaignId/participants/:creatorId')
   updateParticipationStatus(
     @Param('campaignId', ParseIntPipe) campaignId: number,
     @Param('creatorId', ParseIntPipe) creatorId: number,
     @CurrentUser() user: RequestUser,
-    @Body('status') status: participation_status,
+    @Body('status') status: string,
     @Body('rejectionReason') rejectionReason?: string,
   ) {
     return this.campaignsService.updateParticipationStatus(
@@ -821,7 +819,7 @@ export class CampaignsController {
     example: 'fashion,beauty',
   })
   @UseGuards(RolesGuard)
-  @Roles(user_type.business)
+  @Roles('business')
   @Get('creators/search')
   async searchCreators(
     @Query('q') q: string,
@@ -887,7 +885,7 @@ export class CampaignsController {
     },
   })
   @UseGuards(RolesGuard)
-  @Roles(user_type.business)
+  @Roles('business')
   @Post('favorites/:creatorId')
   addCreatorToFavorites(
     @Param('creatorId', ParseIntPipe) creatorId: number,
@@ -918,7 +916,7 @@ export class CampaignsController {
     },
   })
   @UseGuards(RolesGuard)
-  @Roles(user_type.business)
+  @Roles('business')
   @Delete('favorites/:creatorId')
   removeCreatorFromFavorites(
     @Param('creatorId', ParseIntPipe) creatorId: number,

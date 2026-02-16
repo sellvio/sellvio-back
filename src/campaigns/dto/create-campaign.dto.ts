@@ -3,6 +3,7 @@ import {
   IsNumber,
   IsOptional,
   IsEnum,
+  IsIn,
   IsArray,
   IsBoolean,
   IsDateString,
@@ -12,13 +13,11 @@ import {
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  campaign_status,
-  chat_type,
-  creator_type,
-  payment_type,
-  social_platform,
-} from '@prisma/client';
+import { chat_type, social_platform } from '@prisma/client';
+
+const CAMPAIGN_STATUS_VALUES = ['draft', 'active', 'paused', 'completed', 'cancelled'];
+const CREATOR_TYPE_VALUES = ['beginner', 'experienced', 'influencer'];
+const PAYMENT_TYPE_VALUES = ['cost_per_view', 'fixed', 'revenue_share'];
 
 export class CreateCampaignDto {
   @ApiProperty({ example: 'Summer Collection Campaign' })
@@ -49,19 +48,19 @@ export class CreateCampaignDto {
   // finish_date is computed server-side from start_date + duration_days
 
   @ApiPropertyOptional({
-    enum: campaign_status,
-    default: campaign_status.draft,
+    enum: CAMPAIGN_STATUS_VALUES,
+    default: 'draft',
   })
   @IsOptional()
-  @IsEnum(campaign_status)
-  status?: campaign_status = campaign_status.draft;
+  @IsIn(CAMPAIGN_STATUS_VALUES)
+  status?: string = 'draft';
 
   @ApiPropertyOptional({ enum: chat_type, default: chat_type.public })
   @IsOptional()
   @IsEnum(chat_type)
   chat_type?: chat_type = chat_type.public;
 
-  @ApiProperty({ enum: creator_type, isArray: true })
+  @ApiProperty({ enum: CREATOR_TYPE_VALUES, isArray: true })
   @IsArray()
   @Transform(({ value }) => {
     if (value === undefined || value === null) return undefined;
@@ -81,17 +80,17 @@ export class CreateCampaignDto {
     }
     return [String(value)];
   })
-  @IsEnum(creator_type, { each: true })
-  target_creator_types: creator_type[];
+  @IsIn(CREATOR_TYPE_VALUES, { each: true })
+  target_creator_types: string[];
 
   @ApiPropertyOptional({ example: 'Must have experience with beauty products' })
   @IsOptional()
   @IsString()
   additional_requirements?: string;
 
-  @ApiProperty({ enum: payment_type })
-  @IsEnum(payment_type)
-  payment_type: payment_type;
+  @ApiProperty({ enum: PAYMENT_TYPE_VALUES })
+  @IsIn(PAYMENT_TYPE_VALUES)
+  payment_type: string;
 
   @ApiProperty({ example: 50.0 })
   @IsNumber({ maxDecimalPlaces: 2 })

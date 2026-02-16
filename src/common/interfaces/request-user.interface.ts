@@ -1,8 +1,6 @@
-import { user_type } from '@prisma/client';
-
 export interface RequestUser {
   id: number;
   email: string;
-  user_type: user_type;
+  user_type_id: number;
   email_verified: boolean;
 }

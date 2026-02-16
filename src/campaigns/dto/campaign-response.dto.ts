@@ -1,12 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
-import {
-  campaign_status,
-  chat_type,
-  creator_type,
-  payment_type,
-  social_platform,
-  participation_status,
-} from '@prisma/client';
+import { chat_type, social_platform } from '@prisma/client';
+
+const CAMPAIGN_STATUS_VALUES = ['draft', 'active', 'paused', 'completed', 'cancelled'];
+const CREATOR_TYPE_VALUES = ['beginner', 'experienced', 'influencer'];
+const PAYMENT_TYPE_VALUES = ['cost_per_view', 'fixed', 'revenue_share'];
+const PARTICIPATION_STATUS_VALUES = ['pending', 'approved', 'rejected'];
 
 export class CampaignResponseDto {
   @ApiProperty({ example: 1, description: 'Campaign ID' })
@@ -44,11 +42,11 @@ export class CampaignResponseDto {
   finish_date: Date;
 
   @ApiProperty({
-    enum: campaign_status,
-    example: campaign_status.active,
+    enum: CAMPAIGN_STATUS_VALUES,
+    example: 'active',
     description: 'Campaign status',
   })
-  status: campaign_status;
+  status: string;
 
   @ApiProperty({
     enum: chat_type,
@@ -58,12 +56,12 @@ export class CampaignResponseDto {
   chat_type: chat_type;
 
   @ApiProperty({
-    enum: creator_type,
+    enum: CREATOR_TYPE_VALUES,
     isArray: true,
-    example: [creator_type.influencer, creator_type.experienced],
+    example: ['influencer', 'experienced'],
     description: 'Target creator types',
   })
-  target_creator_types: creator_type[];
+  target_creator_types: string[];
 
   @ApiProperty({
     example: 'Must have experience with beauty products',
@@ -73,11 +71,11 @@ export class CampaignResponseDto {
   additional_requirements?: string;
 
   @ApiProperty({
-    enum: payment_type,
-    example: payment_type.cost_per_view,
+    enum: PAYMENT_TYPE_VALUES,
+    example: 'cost_per_view',
     description: 'Payment type',
   })
-  payment_type: payment_type;
+  payment_type: string;
 
   @ApiProperty({ example: 50.0, description: 'Payment amount' })
   payment_amount: number;
@@ -195,11 +193,11 @@ export class ParticipationResponseDto {
   creator_id: number;
 
   @ApiProperty({
-    enum: participation_status,
-    example: participation_status.pending,
+    enum: PARTICIPATION_STATUS_VALUES,
+    example: 'pending',
     description: 'Participation status',
   })
-  status: participation_status;
+  status: string;
 
   @ApiProperty({
     example: '2024-01-01T00:00:00.000Z',

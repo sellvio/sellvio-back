@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { user_type } from '@prisma/client';
+
+const USER_TYPE_VALUES = ['business', 'creator'];
 
 export class UserResponseDto {
   @ApiProperty({ example: 1, description: 'User ID' })
@@ -9,11 +10,11 @@ export class UserResponseDto {
   email: string;
 
   @ApiProperty({
-    enum: user_type,
-    example: user_type.creator,
+    enum: USER_TYPE_VALUES,
+    example: 'creator',
     description: 'User type',
   })
-  user_type: user_type;
+  user_type: string;
 
   @ApiProperty({ example: true, description: 'Email verification status' })
   email_verified: boolean;

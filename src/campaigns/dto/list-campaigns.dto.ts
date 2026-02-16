@@ -2,22 +2,26 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
   IsArray,
-  IsEnum,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
 } from 'class-validator';
 import { PaginationDto } from '../../common/dto/pagination.dto';
-import { campaign_status, creator_type, social_platform } from '@prisma/client';
+import { social_platform } from '@prisma/client';
+
+// String constants for lookup-table-based fields (migrated from Prisma enums)
+const CAMPAIGN_STATUS_VALUES = ['draft', 'active', 'paused', 'completed', 'cancelled'];
+const CREATOR_TYPE_VALUES = ['beginner', 'experienced', 'influencer', 'clipper'];
 
 export class ListCampaignsDto extends PaginationDto {
   @ApiPropertyOptional({
-    enum: campaign_status,
+    enum: CAMPAIGN_STATUS_VALUES,
     description: 'Filter by status',
   })
   @IsOptional()
-  @IsEnum(campaign_status)
-  status?: campaign_status;
+  @IsIn(CAMPAIGN_STATUS_VALUES)
+  status?: string;
 
   @ApiPropertyOptional({ description: 'Filter by business ID' })
   @IsOptional()
@@ -26,18 +30,18 @@ export class ListCampaignsDto extends PaginationDto {
   business_id?: number;
 
   @ApiPropertyOptional({
-    enum: creator_type,
+    enum: CREATOR_TYPE_VALUES,
     isArray: true,
     description: 'Filter by target creator types',
     example: ['beginner', 'influencer'],
   })
   @IsOptional()
   @IsArray()
-  @IsEnum(creator_type, { each: true })
+  @IsIn(CREATOR_TYPE_VALUES, { each: true })
   @Transform(({ value }) =>
     typeof value === 'string' ? value.split(',') : value,
   )
-  creator_types?: creator_type[];
+  creator_types?: string[];
 
   @ApiPropertyOptional({
     enum: social_platform,
@@ -47,11 +51,11 @@ export class ListCampaignsDto extends PaginationDto {
   })
   @IsOptional()
   @IsArray()
-  @IsEnum(social_platform, { each: true })
+  @IsString({ each: true })
   @Transform(({ value }) =>
     typeof value === 'string' ? value.split(',') : value,
   )
-  platforms?: social_platform[];
+  platforms?: string[];
 
   @ApiPropertyOptional({
     type: [String],

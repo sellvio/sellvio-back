@@ -6,10 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
-  chat_role_type,
   invite_status,
-  participation_status,
-  user_type,
 } from '@prisma/client';
 
 @Injectable()
@@ -17,6 +14,7 @@ export class ServerInvitesService {
   private lookupCache: {
     chatRoleTypes?: Map<string, number>;
     participationStatuses?: Map<string, number>;
+    userTypes?: Map<string, number>;
   } = {};
 
   constructor(private readonly prisma: PrismaService) {}
@@ -43,6 +41,16 @@ export class ServerInvitesService {
     return this.lookupCache.participationStatuses.get(status) || null;
   }
 
+  private async getUserTypeId(type: string): Promise<number | null> {
+    if (!this.lookupCache.userTypes) {
+      const types = await this.prisma.user_types.findMany();
+      this.lookupCache.userTypes = new Map(
+        types.map((t) => [t.user_type, t.id]),
+      );
+    }
+    return this.lookupCache.userTypes.get(type) || null;
+  }
+
   async createInvite(
     serverId: number,
     creatorUserId: number,
@@ -55,11 +63,12 @@ export class ServerInvitesService {
     if (!server) throw new NotFoundException('Chat server not found');
 
     // Verify target user is a creator
+    const creatorTypeId = await this.getUserTypeId('creator');
     const user = await this.prisma.users.findUnique({
       where: { id: creatorUserId },
-      select: { id: true, user_type: true },
+      select: { id: true, user_type_id: true },
     });
-    if (!user || user.user_type !== user_type.creator) {
+    if (!user || user.user_type_id !== creatorTypeId) {
       throw new BadRequestException('Only creators can be invited to servers');
     }
 
@@ -80,6 +89,7 @@ export class ServerInvitesService {
     }
 
     // Block if already an approved campaign participant
+    const approvedStatusId = await this.getParticipationStatusId('approved');
     const existingParticipation =
       await this.prisma.campaign_participants.findUnique({
         where: {
@@ -88,9 +98,9 @@ export class ServerInvitesService {
             creator_id: creatorUserId,
           },
         },
-        select: { status: true },
+        select: { status_id: true },
       });
-    if (existingParticipation?.status === participation_status.approved) {
+    if (existingParticipation?.status_id === approvedStatusId) {
       throw new BadRequestException(
         'User is already an approved participant of this campaign',
       );
@@ -158,12 +168,13 @@ export class ServerInvitesService {
     if (uniqueIds.length === 0) return { invited: 0, skipped: [] };
 
     // Fetch users that are creators
+    const creatorTypeId = await this.getUserTypeId('creator');
     const users = await this.prisma.users.findMany({
       where: { id: { in: uniqueIds } },
-      select: { id: true, user_type: true },
+      select: { id: true, user_type_id: true },
     });
     const creatorIds = new Set(
-      users.filter((u) => u.user_type === user_type.creator).map((u) => u.id),
+      users.filter((u) => u.user_type_id === creatorTypeId).map((u) => u.id),
     );
 
     // Exclude existing server members
@@ -174,12 +185,13 @@ export class ServerInvitesService {
     const memberIds = new Set(existingMembers.map((m) => m.user_id));
 
     // Exclude already approved participants
+    const approvedStatusId = await this.getParticipationStatusId('approved');
     const approvedParticipants =
       await this.prisma.campaign_participants.findMany({
         where: {
           campaign_id: server.campaign_id,
           creator_id: { in: Array.from(creatorIds) },
-          status: participation_status.approved,
+          status_id: approvedStatusId,
         },
         select: { creator_id: true },
       });
@@ -491,7 +503,6 @@ export class ServerInvitesService {
           },
         },
         update: {
-          status: participation_status.approved,
           status_id: participationStatusId,
           approved_at: new Date(),
           approved_by: campaign.business_id,
@@ -500,7 +511,6 @@ export class ServerInvitesService {
         create: {
           campaign_id: campaignId,
           creator_id: userId,
-          status: participation_status.approved,
           status_id: participationStatusId,
           approved_at: new Date(),
           approved_by: campaign.business_id,
@@ -518,7 +528,6 @@ export class ServerInvitesService {
         create: {
           chat_server_id: serverId,
           user_id: userId,
-          role: chat_role_type.user,
           role_id: chatRoleId,
         },
       }),

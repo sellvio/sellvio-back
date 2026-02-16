@@ -28,7 +28,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequestUser } from '../common/interfaces/request-user.interface';
-import { user_type, video_status } from '@prisma/client';
+const VIDEO_STATUS_VALUES = ['approved', 'rejected', 'under_review'];
 import {
   VideoResponseDto,
   VideoWithDetailsDto,
@@ -102,7 +102,7 @@ export class VideosController {
     },
   })
   @UseGuards(RolesGuard)
-  @Roles(user_type.creator)
+  @Roles('creator')
   @Post('campaigns/:campaignId')
   create(
     @Param('campaignId', ParseIntPipe) campaignId: number,
@@ -161,9 +161,9 @@ export class VideosController {
   @ApiQuery({
     name: 'status',
     required: false,
-    enum: video_status,
+    enum: VIDEO_STATUS_VALUES,
     description: 'Filter videos by status',
-    example: video_status.approved,
+    example: 'approved',
   })
   @ApiResponse({
     status: 200,
@@ -189,7 +189,7 @@ export class VideosController {
     campaign_id?: number,
     @Query('creator_id', new ParseIntPipe({ optional: true }))
     creator_id?: number,
-    @Query('status') status?: video_status,
+    @Query('status') status?: string,
   ) {
     const filters = { campaign_id, creator_id, status };
     return this.videosService.findAll(pagination, filters);
@@ -330,7 +330,7 @@ export class VideosController {
     },
   })
   @UseGuards(RolesGuard)
-  @Roles(user_type.business)
+  @Roles('business')
   @Patch(':id/review')
   review(
     @Param('id', ParseIntPipe) id: number,
@@ -404,7 +404,7 @@ export class VideosController {
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.videosService.remove(id, user.id, user.user_type);
+    return this.videosService.remove(id, user.id, user.user_type_id);
   }
 
   @ApiOperation({

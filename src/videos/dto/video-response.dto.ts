@@ -1,5 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { video_status, social_platform } from '@prisma/client';
+import { social_platform } from '@prisma/client';
+
+const VIDEO_STATUS_VALUES = ['approved', 'rejected', 'under_review'];
 
 export class VideoResponseDto {
   @ApiProperty({ example: 1, description: 'Video ID' })
@@ -52,11 +54,11 @@ export class VideoResponseDto {
   file_size?: number;
 
   @ApiProperty({
-    enum: video_status,
-    example: video_status.under_review,
+    enum: VIDEO_STATUS_VALUES,
+    example: 'under_review',
     description: 'Video status',
   })
-  status: video_status;
+  status: string;
 
   @ApiProperty({
     example: '2024-01-01T00:00:00.000Z',

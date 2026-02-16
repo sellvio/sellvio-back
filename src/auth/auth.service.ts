@@ -12,7 +12,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
-import { business_industry, user_type } from '@prisma/client';
+import { business_industry } from '@prisma/client';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 
 @Injectable()
@@ -29,7 +29,7 @@ export class AuthService {
     private emailService: EmailService,
   ) {}
 
-  private async getUserTypeId(type: string): Promise<number> {
+  async getUserTypeId(type: string): Promise<number> {
     if (!this.lookupCache.userTypes) {
       const types = await this.prisma.user_types.findMany();
       this.lookupCache.userTypes = new Map(
@@ -81,6 +81,8 @@ export class AuthService {
 
     // Get user_type_id from lookup table
     const userTypeId = await this.getUserTypeId(userType);
+    const businessTypeId = await this.getUserTypeId('business');
+    const creatorTypeId = await this.getUserTypeId('creator');
 
     // Create user with profile in transaction
     const result = await this.prisma.$transaction(async (tx) => {
@@ -89,12 +91,11 @@ export class AuthService {
         data: {
           email: email.toLowerCase().trim(),
           password_hash: hashedPassword,
-          user_type: userType,
           user_type_id: userTypeId,
         },
       });
 
-      if (userType === user_type.business) {
+      if (userTypeId === businessTypeId) {
         // Create appropriate profile
         const legalStatus = await this.prisma.legal_statuses.findUnique({
           where: { id: Number(profileData.legal_status_id) },
@@ -143,7 +144,7 @@ export class AuthService {
             balance: 0.0,
           },
         });
-      } else if (userType === user_type.creator) {
+      } else if (userTypeId === creatorTypeId) {
         if (
           !profileData.first_name ||
           !profileData.last_name ||
@@ -201,7 +202,7 @@ export class AuthService {
       user: {
         id: result.id,
         email: result.email,
-        user_type: result.user_type,
+        user_type_id: result.user_type_id,
         email_verified: result.email_verified,
       },
     };
@@ -215,8 +216,11 @@ export class AuthService {
     }
 
     // If client provided user_type, ensure it matches stored user type
-    if (loginDto.user_type && loginDto.user_type !== user.user_type) {
-      throw new UnauthorizedException('Invalid credentials');
+    if (loginDto.user_type) {
+      const loginUserTypeId = await this.getUserTypeId(loginDto.user_type);
+      if (loginUserTypeId !== user.user_type_id) {
+        throw new UnauthorizedException('Invalid credentials');
+      }
     }
 
     const { access_token, refresh_token } = this.generateTokens(user);
@@ -228,7 +232,7 @@ export class AuthService {
       user: {
         id: user.id,
         email: user.email,
-        user_type: user.user_type,
+        user_type_id: user.user_type_id,
         email_verified: user.email_verified,
       },
     };
@@ -252,7 +256,7 @@ export class AuthService {
     return {
       id: user.id,
       email: user.email,
-      user_type: user.user_type,
+      user_type_id: user.user_type_id,
       email_verified: user.email_verified,
     };
   }
@@ -261,7 +265,7 @@ export class AuthService {
     const payload = {
       sub: user.id,
       email: user.email,
-      user_type: user.user_type,
+      user_type_id: user.user_type_id,
     };
     const access_token = this.jwtService.sign(payload, {
       expiresIn: process.env.JWT_EXPIRES_IN || '15m',
@@ -351,7 +355,7 @@ export class AuthService {
       select: {
         id: true,
         email: true,
-        user_type: true,
+        user_type_id: true,
         email_verified: true,
         created_at: true,
         business_profiles: {
@@ -420,9 +424,14 @@ export class AuthService {
   }
 
   async updateProfile(userId: number, dto: UpdateProfileDto) {
+    const [creatorTypeId, businessTypeId] = await Promise.all([
+      this.getUserTypeId('creator'),
+      this.getUserTypeId('business'),
+    ]);
+
     const user = await this.prisma.users.findUnique({
       where: { id: userId },
-      select: { id: true, user_type: true },
+      select: { id: true, user_type_id: true },
     });
 
     if (!user) {
@@ -433,7 +442,7 @@ export class AuthService {
       const clearFields = new Set(
         (dto.clear_fields || []).map((f) => String(f).trim()),
       );
-      if (user.user_type === user_type.creator) {
+      if (user.user_type_id === creatorTypeId) {
         const creatorData: any = {};
         // Apply explicit clears first
         if (clearFields.has('profile_image_url'))
@@ -497,7 +506,7 @@ export class AuthService {
             });
           }
         }
-      } else if (user.user_type === user_type.business) {
+      } else if (user.user_type_id === businessTypeId) {
         const businessData: any = {};
         // Apply explicit clears first (only optional/nullable fields)
         if (clearFields.has('logo_url')) businessData.logo_url = null;
@@ -573,6 +582,9 @@ export class AuthService {
 
   private async sendVerificationEmail(user: any) {
     try {
+      const businessTypeId = await this.getUserTypeId('business');
+      const creatorTypeId = await this.getUserTypeId('creator');
+
       // Generate verification token
       const token = crypto.randomBytes(32).toString('hex');
       const expiresAt = new Date();
@@ -589,12 +601,12 @@ export class AuthService {
 
       // Determine user name for email
       let userName = user.email.split('@')[0]; // fallback
-      if (user.user_type === user_type.business) {
+      if (user.user_type_id === businessTypeId) {
         const profile = await this.prisma.business_profiles.findUnique({
           where: { user_id: user.id },
         });
         userName = profile?.company_name || userName;
-      } else if (user.user_type === user_type.creator) {
+      } else if (user.user_type_id === creatorTypeId) {
         const profile = await this.prisma.creator_profiles.findUnique({
           where: { user_id: user.id },
         });
@@ -741,13 +753,15 @@ export class AuthService {
       });
 
       // Get user name
+      const businessTypeId = await this.getUserTypeId('business');
+      const creatorTypeId = await this.getUserTypeId('creator');
       let userName = user.email.split('@')[0];
-      if (user.user_type === user_type.business) {
+      if (user.user_type_id === businessTypeId) {
         const profile = await this.prisma.business_profiles.findUnique({
           where: { user_id: user.id },
         });
         userName = profile?.company_name || userName;
-      } else if (user.user_type === user_type.creator) {
+      } else if (user.user_type_id === creatorTypeId) {
         const profile = await this.prisma.creator_profiles.findUnique({
           where: { user_id: user.id },
         });
@@ -818,13 +832,15 @@ export class AuthService {
 
   private async sendWelcomeEmail(user: any) {
     try {
+      const businessTypeId = await this.getUserTypeId('business');
+      const creatorTypeId = await this.getUserTypeId('creator');
       let userName = user.email.split('@')[0];
-      if (user.user_type === user_type.business) {
+      if (user.user_type_id === businessTypeId) {
         const profile = await this.prisma.business_profiles.findUnique({
           where: { user_id: user.id },
         });
         userName = profile?.company_name || userName;
-      } else if (user.user_type === user_type.creator) {
+      } else if (user.user_type_id === creatorTypeId) {
         const profile = await this.prisma.creator_profiles.findUnique({
           where: { user_id: user.id },
         });
@@ -834,7 +850,7 @@ export class AuthService {
       await this.emailService.sendWelcomeEmail(
         user.email,
         userName,
-        user.user_type,
+        user.user_type_id,
       );
     } catch (error) {
       console.error('Failed to send welcome email:', error);

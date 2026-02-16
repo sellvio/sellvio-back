@@ -1,14 +1,13 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  creator_type,
-  social_platform,
-  user_type,
-} from '@prisma/client';
+import { social_platform } from '@prisma/client';
+
+const USER_TYPE_VALUES = ['business', 'creator'];
+const CREATOR_TYPE_VALUES = ['beginner', 'experienced', 'influencer'];
 import {
   IsArray,
   IsDate,
   IsEmail,
-  IsEnum,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -19,13 +18,13 @@ import { Transform } from 'class-transformer';
 
 export class UpdateProfileDto {
   @ApiPropertyOptional({
-    enum: user_type,
+    enum: USER_TYPE_VALUES,
     description: 'User type (cannot be changed)',
     readOnly: true,
   })
   @IsOptional()
-  @IsEnum(user_type)
-  user_type?: user_type;
+  @IsIn(USER_TYPE_VALUES)
+  user_type?: string;
 
   // Creator updatable fields
   @ApiPropertyOptional()
@@ -45,10 +44,10 @@ export class UpdateProfileDto {
   @IsString()
   nickname?: string;
 
-  @ApiPropertyOptional({ enum: Object.values(creator_type) })
+  @ApiPropertyOptional({ enum: CREATOR_TYPE_VALUES })
   @IsOptional()
-  @IsEnum(creator_type)
-  creator_type?: creator_type;
+  @IsIn(CREATOR_TYPE_VALUES)
+  creator_type?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

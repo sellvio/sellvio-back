@@ -318,7 +318,8 @@ For business users, you can update: company_name, business_email, phone, website
     const dbCoverFile = files?.business_cover_image_url?.[0];
 
     // Map uploaded image files to DB URL fields by user type
-    if (user.user_type === 'creator') {
+    const creatorTypeId = await this.authService.getUserTypeId('creator');
+    if (user.user_type_id === creatorTypeId) {
       const effectiveProfileFile = dbProfileFile;
       if (effectiveProfileFile) {
         const url =

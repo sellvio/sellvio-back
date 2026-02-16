@@ -11,7 +11,6 @@ import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { chat_role_type } from '@prisma/client';
 
 type WsUser = { id: number; email?: string; user_type?: string };
 
@@ -24,10 +23,25 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server!: Server;
 
+  // Cache for lookup table IDs
+  private lookupCache: {
+    chatRoleTypes?: Map<string, number>;
+  } = {};
+
   constructor(
     private readonly jwtService: JwtService,
     private readonly prisma: PrismaService,
   ) {}
+
+  private async getChatRoleTypeId(role: string): Promise<number | null> {
+    if (!this.lookupCache.chatRoleTypes) {
+      const roles = await this.prisma.chat_role_types.findMany();
+      this.lookupCache.chatRoleTypes = new Map(
+        roles.map((r) => [r.chat_role_type, r.id]),
+      );
+    }
+    return this.lookupCache.chatRoleTypes.get(role) || null;
+  }
   //Connections
   async handleConnection(client: Socket) {
     const token =
@@ -128,17 +142,18 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client.emit('error', { message: 'Invalid server id' });
       return;
     }
+    const adminRoleId = await this.getChatRoleTypeId('admin');
     const membership = await this.prisma.chat_memberships.findUnique({
       where: {
         chat_server_id_user_id: { chat_server_id: serverId, user_id: user.id },
       },
-      select: { role: true },
+      select: { role_id: true },
     });
     if (!membership) {
       client.emit('error', { message: 'You are not a member of this server' });
       return;
     }
-    if (membership.role === chat_role_type.admin) {
+    if (membership.role_id === adminRoleId) {
       client.emit('error', { message: 'Admins cannot leave the server' });
       return;
     }
@@ -189,6 +204,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client.emit('error', { message: 'Invalid server or user id' });
       return;
     }
+    const adminRoleId = await this.getChatRoleTypeId('admin');
     const requesterMembership = await this.prisma.chat_memberships.findUnique({
       where: {
         chat_server_id_user_id: {
@@ -196,11 +212,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           user_id: requester.id,
         },
       },
-      select: { role: true },
+      select: { role_id: true },
     });
     if (
       !requesterMembership ||
-      requesterMembership.role !== chat_role_type.admin
+      requesterMembership.role_id !== adminRoleId
     ) {
       client.emit('error', { message: 'Forbidden: admin only' });
       return;
@@ -212,13 +228,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           user_id: targetUserId,
         },
       },
-      select: { role: true },
+      select: { role_id: true },
     });
     if (!targetMembership) {
       client.emit('error', { message: 'User is not in this server' });
       return;
     }
-    if (targetMembership.role === chat_role_type.admin) {
+    if (targetMembership.role_id === adminRoleId) {
       client.emit('error', { message: 'Cannot kick another admin' });
       return;
     }
@@ -509,6 +525,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
     // Check admin on server
+    const adminRoleId = await this.getChatRoleTypeId('admin');
     const membership = await this.prisma.chat_memberships.findUnique({
       where: {
         chat_server_id_user_id: {
@@ -516,9 +533,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           user_id: user.id,
         },
       },
-      select: { role: true },
+      select: { role_id: true },
     });
-    if (!membership || membership.role !== 'admin') {
+    if (!membership || membership.role_id !== adminRoleId) {
       client.emit('error', { message: 'Forbidden: admin only' });
       return;
     }
@@ -631,7 +648,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             user_id: userId,
           },
         },
-        select: { role: true },
+        select: { role_id: true },
       }),
       this.prisma.campaigns.findUnique({
         where: { id: server.campaign_id },
@@ -652,13 +669,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (!channel) return false;
     const serverId = channel.chat_servers_id;
     let canView = true;
+    const adminRoleId = await this.getChatRoleTypeId('admin');
     const chatMemberships = await this.prisma.chat_memberships.findUnique({
       where: {
         chat_server_id_user_id: { chat_server_id: serverId, user_id: userId },
       },
-      select: { role: true },
+      select: { role_id: true },
     });
-    if (chatMemberships?.role === 'admin') {
+    if (chatMemberships?.role_id === adminRoleId) {
       return true;
     }
     canView = await this.canViewServer(userId, serverId);
@@ -688,7 +706,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           select: {
             id: true,
             email: true,
-            user_type: true,
+            user_type_id: true,
             creator_profiles: {
               select: {
                 first_name: true,
@@ -733,7 +751,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       users: {
         id: m.users.id,
         email: m.users.email,
-        user_type: m.users.user_type,
+        user_type_id: m.users.user_type_id,
         first_name: m.users.creator_profiles?.first_name ?? null,
         last_name: m.users.creator_profiles?.last_name ?? null,
         company_name: m.users.business_profiles?.company_name ?? null,
@@ -747,7 +765,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       users: {
         id: m.users.id,
         email: m.users.email,
-        user_type: m.users.user_type,
+        user_type_id: m.users.user_type_id,
         first_name: m.users.creator_profiles?.first_name ?? null,
         last_name: m.users.creator_profiles?.last_name ?? null,
         company_name: m.users.business_profiles?.company_name ?? null,
@@ -764,6 +782,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   private async broadcastChannelOnline(serverId: number, channelId: number) {
     // One raw query to resolve permitted users
+    const adminRoleId = await this.getChatRoleTypeId('admin');
     const permitted = await this.prisma.$queryRaw<
       { id: number; email: string }[]
     >`
@@ -786,7 +805,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           server_admins AS (
             SELECT cm.user_id
             FROM public.chat_memberships cm
-            WHERE cm.chat_server_id = ${serverId} AND cm.role = 'admin'
+            WHERE cm.chat_server_id = ${serverId} AND cm.role_id = ${adminRoleId}
           ),
           perm AS (
             -- public: all server members
@@ -828,7 +847,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
             select: {
               id: true,
               email: true,
-              user_type: true,
+              user_type_id: true,
               creator_profiles: {
                 select: {
                   first_name: true,
@@ -849,7 +868,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       users: {
         id: u.id,
         email: u.email,
-        user_type: u.user_type,
+        user_type_id: u.user_type_id,
         first_name: u.creator_profiles?.first_name ?? null,
         last_name: u.creator_profiles?.last_name ?? null,
         company_name: u.business_profiles?.company_name ?? null,
