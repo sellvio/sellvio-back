@@ -765,4 +765,43 @@ export class ChatChannelsService {
     await this.prisma.chat_channels.delete({ where: { id: channelId } });
     return { success: true };
   }
+
+  async uploadChatImages(
+    serverId: number,
+    channelId: number,
+    userId: number,
+    files: any[],
+  ) {
+    // Verify channel belongs to server
+    const channel = await this.prisma.chat_channels.findUnique({
+      where: { id: channelId },
+      select: { chat_servers_id: true },
+    });
+    if (!channel || channel.chat_servers_id !== serverId) {
+      throw new NotFoundException('Channel not found in this server');
+    }
+
+    // Verify user is a server member
+    const membership = await this.prisma.chat_memberships.findUnique({
+      where: {
+        chat_server_id_user_id: {
+          chat_server_id: serverId,
+          user_id: userId,
+        },
+      },
+      select: { id: true },
+    });
+    if (!membership) {
+      throw new ForbiddenException('You are not a member of this server');
+    }
+
+    const images = (files || [])
+      .filter((f: any) => f?.cloudinaryUrl)
+      .map((f: any, i: number) => ({
+        url: f.cloudinaryUrl,
+        sort_order: i,
+      }));
+
+    return { images };
+  }
 }

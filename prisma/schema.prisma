@@ -541,17 +541,29 @@ model channel_memberships {
 }
 
 model channel_messages {
-  id            Int           @id @default(autoincrement())
-  channel_id    Int
-  sender_id     Int
-  content       String
-  created_at    DateTime?     @default(now()) @db.Timestamptz(6)
-  pinned        Boolean?      @default(false)
-  chat_channels chat_channels @relation(fields: [channel_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  users         users         @relation(fields: [sender_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id                     Int                      @id @default(autoincrement())
+  channel_id             Int
+  sender_id              Int
+  content                String
+  created_at             DateTime?                @default(now()) @db.Timestamptz(6)
+  pinned                 Boolean?                 @default(false)
+  chat_channels          chat_channels            @relation(fields: [channel_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users                  users                    @relation(fields: [sender_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  channel_message_images channel_message_images[]
 
   @@index([channel_id], map: "idx_channel_messages_channel")
   @@index([sender_id], map: "idx_channel_messages_sender")
+}
+
+model channel_message_images {
+  id               Int              @id @default(autoincrement())
+  message_id       Int
+  image_url        String           @db.VarChar(500)
+  sort_order       Int              @default(0)
+  created_at       DateTime?        @default(now()) @db.Timestamptz(6)
+  channel_messages channel_messages @relation(fields: [message_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([message_id], map: "idx_channel_message_images_message")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.

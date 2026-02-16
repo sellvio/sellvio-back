@@ -7,11 +7,14 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Req,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiBody,
+  ApiConsumes,
   ApiOperation,
   ApiParam,
   ApiResponse,
@@ -27,6 +30,7 @@ import { RequestUser } from '../common/interfaces/request-user.interface';
 import { AddMemberDto } from './dto/add-member.dto';
 import { AddMembersDto } from './dto/add-members.dto';
 import { UpdateServerDto } from './dto/update-server.dto';
+import { ChatImagesMulterInterceptor } from '../common/interceptors/chat-images-multer.interceptor';
 
 @ApiTags('Chat Channels')
 @ApiBearerAuth('JWT-auth')
@@ -214,5 +218,37 @@ export class ChatChannelsController {
     @Param('channelId', ParseIntPipe) channelId: number,
   ) {
     return this.service.remove(serverId, channelId);
+  }
+
+  @ApiOperation({ summary: 'Upload images for a chat message (max 5)' })
+  @ApiParam({ name: 'serverId', type: Number })
+  @ApiParam({ name: 'channelId', type: Number })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        images: {
+          type: 'array',
+          items: { type: 'string', format: 'binary' },
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Images uploaded successfully' })
+  @UseInterceptors(ChatImagesMulterInterceptor)
+  @Post(':channelId/images')
+  uploadChatImages(
+    @Param('serverId', ParseIntPipe) serverId: number,
+    @Param('channelId', ParseIntPipe) channelId: number,
+    @CurrentUser() user: RequestUser,
+    @Req() req: any,
+  ) {
+    return this.service.uploadChatImages(
+      serverId,
+      channelId,
+      user.id,
+      req.files,
+    );
   }
 }

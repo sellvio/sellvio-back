@@ -214,10 +214,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       },
       select: { role_id: true },
     });
-    if (
-      !requesterMembership ||
-      requesterMembership.role_id !== adminRoleId
-    ) {
+    if (!requesterMembership || requesterMembership.role_id !== adminRoleId) {
       client.emit('error', { message: 'Forbidden: admin only' });
       return;
     }
@@ -327,6 +324,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       ORDER BY id DESC
       LIMIT ${limit}
     `;
+    const messageIds = rows.map((m) => m.id);
+    const imageMap = await this.batchFetchImages(messageIds);
     const mapped = rows
       .slice()
       .reverse()
@@ -336,6 +335,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         senderId: m.sender_id,
         content: m.content,
         createdAt: m.created_at,
+        images: imageMap.get(m.id) || [],
       }));
     const messages = await this.enrichMessagesWithSenderInfo(mapped);
     client.emit('message:history', {
@@ -365,6 +365,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     payload: {
       channelId: number;
       content: string;
+      imageUrls?: string[];
     },
   ) {
     const user: WsUser | undefined = (client.data as any).user;
@@ -374,7 +375,25 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
     const channelId = Number(payload?.channelId);
     const content = String(payload?.content || '').trim();
-    if (!channelId || !content) {
+    const imageUrls = Array.isArray(payload?.imageUrls)
+      ? payload.imageUrls
+      : [];
+
+    if (imageUrls.length > 5) {
+      client.emit('error', { message: 'Maximum 5 images per message' });
+      return;
+    }
+
+    // Validate Cloudinary URLs
+    const cloudinaryPattern = /^https:\/\/res\.cloudinary\.com\//;
+    for (const url of imageUrls) {
+      if (typeof url !== 'string' || !cloudinaryPattern.test(url)) {
+        client.emit('error', { message: 'Invalid image URL' });
+        return;
+      }
+    }
+
+    if (!channelId || (!content && imageUrls.length === 0)) {
       client.emit('error', { message: 'Invalid message' });
       return;
     }
@@ -383,7 +402,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client.emit('error', { message: 'Forbidden' });
       return;
     }
-    // Persist message via SQL to avoid Prisma client type mismatch until generated
     const rows = await this.prisma.$queryRaw<
       {
         id: number;
@@ -399,6 +417,18 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       RETURNING id, channel_id, sender_id, content, created_at, pinned
     `;
     const msg = rows[0];
+
+    // Persist images if any
+    if (imageUrls.length > 0) {
+      await this.prisma.channel_message_images.createMany({
+        data: imageUrls.map((url, i) => ({
+          message_id: msg.id,
+          image_url: url,
+          sort_order: i,
+        })),
+      });
+    }
+
     const [enriched] = await this.enrichMessagesWithSenderInfo([
       {
         id: msg.id,
@@ -407,6 +437,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         content: msg.content,
         createdAt: msg.created_at,
         pinned: !!msg.pinned,
+        images: imageUrls,
       },
     ]);
     this.server.to(this.channelRoomName(channelId)).emit('message', enriched);
@@ -473,6 +504,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           ORDER BY id DESC
           LIMIT ${limit}
         `;
+    const messageIds = rows.map((m) => m.id);
+    const imageMap = await this.batchFetchImages(messageIds);
     const mapped = rows
       .slice()
       .reverse()
@@ -483,6 +516,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         content: m.content,
         createdAt: m.created_at,
         pinned: !!m.pinned,
+        images: imageMap.get(m.id) || [],
       }));
     const messages = await this.enrichMessagesWithSenderInfo(mapped);
     client.emit('message:history', {
@@ -561,6 +595,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         pinned: true,
       },
     });
+    // Fetch images for this message
+    const imageMap = await this.batchFetchImages([updated.id]);
     // Broadcast to channel
     this.server.to(this.channelRoomName(channelId)).emit('message:pinned', {
       id: updated.id,
@@ -569,6 +605,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       content: updated.content,
       createdAt: updated.created_at,
       pinned: !!updated.pinned,
+      images: imageMap.get(updated.id) || [],
     });
     client.emit('message:pin:ok', {
       messageId: updated.id,
@@ -576,6 +613,24 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     });
   }
   //Helper functions
+  private async batchFetchImages(
+    messageIds: number[],
+  ): Promise<Map<number, string[]>> {
+    if (messageIds.length === 0) return new Map();
+    const images = await this.prisma.channel_message_images.findMany({
+      where: { message_id: { in: messageIds } },
+      orderBy: { sort_order: 'asc' },
+      select: { message_id: true, image_url: true },
+    });
+    const map = new Map<number, string[]>();
+    for (const img of images) {
+      const arr = map.get(img.message_id) || [];
+      arr.push(img.image_url);
+      map.set(img.message_id, arr);
+    }
+    return map;
+  }
+
   private async enrichMessagesWithSenderInfo(
     messages: {
       senderId: number;
