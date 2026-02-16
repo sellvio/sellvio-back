@@ -406,6 +406,7 @@ model users {
   email_verification_tokens                               email_verification_tokens[]
   password_reset_tokens                                   password_reset_tokens[]
   refresh_tokens                                          refresh_tokens[]
+  message_reactions                                        message_reactions[]
   server_invites_received                                  server_invites[]            @relation("server_invites_invited_user")
   server_invites_sent                                     server_invites[]            @relation("server_invites_inviter")
   user_types                                              user_types                  @relation(fields: [user_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -547,9 +548,13 @@ model channel_messages {
   content                String
   created_at             DateTime?                @default(now()) @db.Timestamptz(6)
   pinned                 Boolean?                 @default(false)
+  reply_to_id            Int?
   chat_channels          chat_channels            @relation(fields: [channel_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   users                  users                    @relation(fields: [sender_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  reply_to               channel_messages?        @relation("message_replies", fields: [reply_to_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  replies                channel_messages[]       @relation("message_replies")
   channel_message_images channel_message_images[]
+  message_reactions      message_reactions[]
 
   @@index([channel_id], map: "idx_channel_messages_channel")
   @@index([sender_id], map: "idx_channel_messages_sender")
@@ -564,6 +569,29 @@ model channel_message_images {
   channel_messages channel_messages @relation(fields: [message_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([message_id], map: "idx_channel_message_images_message")
+}
+
+model emojis {
+  id                Int                 @id @default(autoincrement())
+  name              String              @unique @db.VarChar(100)
+  url               String              @db.VarChar(500)
+  created_at        DateTime?           @default(now()) @db.Timestamptz(6)
+  message_reactions message_reactions[]
+}
+
+model message_reactions {
+  id               Int              @id @default(autoincrement())
+  message_id       Int
+  user_id          Int
+  emoji_id         Int
+  created_at       DateTime?        @default(now()) @db.Timestamptz(6)
+  channel_messages channel_messages @relation(fields: [message_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users            users            @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  emojis           emojis           @relation(fields: [emoji_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([message_id, user_id, emoji_id])
+  @@index([message_id], map: "idx_message_reactions_message")
+  @@index([user_id], map: "idx_message_reactions_user")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.

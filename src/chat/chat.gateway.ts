@@ -316,16 +316,22 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         sender_id: number;
         content: string;
         created_at: Date;
+        reply_to_id: number | null;
       }[]
     >`
-      SELECT id, channel_id, sender_id, content, created_at
+      SELECT id, channel_id, sender_id, content, created_at, reply_to_id
       FROM public.channel_messages
       WHERE channel_id = ${channelId}
       ORDER BY id DESC
       LIMIT ${limit}
     `;
     const messageIds = rows.map((m) => m.id);
-    const imageMap = await this.batchFetchImages(messageIds);
+    const replyToIds = rows.map((m) => m.reply_to_id).filter((id): id is number => id !== null);
+    const [imageMap, reactionMap, replyToMap] = await Promise.all([
+      this.batchFetchImages(messageIds),
+      this.batchFetchReactions(messageIds),
+      this.batchFetchReplyTo(replyToIds),
+    ]);
     const mapped = rows
       .slice()
       .reverse()
@@ -336,6 +342,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         content: m.content,
         createdAt: m.created_at,
         images: imageMap.get(m.id) || [],
+        reactions: reactionMap.get(m.id) || [],
+        replyToId: m.reply_to_id,
+        replyTo: m.reply_to_id ? replyToMap.get(m.reply_to_id) || null : null,
       }));
     const messages = await this.enrichMessagesWithSenderInfo(mapped);
     client.emit('message:history', {
@@ -366,6 +375,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       channelId: number;
       content: string;
       imageUrls?: string[];
+      replyToId?: number;
     },
   ) {
     const user: WsUser | undefined = (client.data as any).user;
@@ -397,10 +407,22 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client.emit('error', { message: 'Invalid message' });
       return;
     }
+    const replyToId = payload?.replyToId ? Number(payload.replyToId) : null;
     const can = await this.canViewChannel(user.id, channelId);
     if (!can) {
       client.emit('error', { message: 'Forbidden' });
       return;
+    }
+    // Validate reply target belongs to the same channel
+    if (replyToId) {
+      const replyTarget = await this.prisma.channel_messages.findUnique({
+        where: { id: replyToId },
+        select: { channel_id: true },
+      });
+      if (!replyTarget || replyTarget.channel_id !== channelId) {
+        client.emit('error', { message: 'Reply target not found in this channel' });
+        return;
+      }
     }
     const rows = await this.prisma.$queryRaw<
       {
@@ -410,11 +432,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         content: string;
         created_at: Date;
         pinned: boolean | null;
+        reply_to_id: number | null;
       }[]
     >`
-      INSERT INTO public.channel_messages (channel_id, sender_id, content)
-      VALUES (${channelId}, ${user.id}, ${content})
-      RETURNING id, channel_id, sender_id, content, created_at, pinned
+      INSERT INTO public.channel_messages (channel_id, sender_id, content, reply_to_id)
+      VALUES (${channelId}, ${user.id}, ${content}, ${replyToId})
+      RETURNING id, channel_id, sender_id, content, created_at, pinned, reply_to_id
     `;
     const msg = rows[0];
 
@@ -429,6 +452,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       });
     }
 
+    // Fetch reply-to message info if replying
+    let replyTo: any = null;
+    if (msg.reply_to_id) {
+      const replyMap = await this.batchFetchReplyTo([msg.reply_to_id]);
+      replyTo = replyMap.get(msg.reply_to_id) || null;
+    }
+
     const [enriched] = await this.enrichMessagesWithSenderInfo([
       {
         id: msg.id,
@@ -438,6 +468,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         createdAt: msg.created_at,
         pinned: !!msg.pinned,
         images: imageUrls,
+        reactions: [],
+        replyToId: msg.reply_to_id,
+        replyTo,
       },
     ]);
     this.server.to(this.channelRoomName(channelId)).emit('message', enriched);
@@ -471,41 +504,37 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client.emit('error', { message: 'Forbidden' });
       return;
     }
+    type HistoryRow = {
+      id: number;
+      channel_id: number;
+      sender_id: number;
+      content: string;
+      created_at: Date;
+      pinned: boolean | null;
+      reply_to_id: number | null;
+    };
     const rows = beforeId
-      ? await this.prisma.$queryRaw<
-          {
-            id: number;
-            channel_id: number;
-            sender_id: number;
-            content: string;
-            created_at: Date;
-            pinned: boolean | null;
-          }[]
-        >`
-          SELECT id, channel_id, sender_id, content, created_at, pinned
+      ? await this.prisma.$queryRaw<HistoryRow[]>`
+          SELECT id, channel_id, sender_id, content, created_at, pinned, reply_to_id
           FROM public.channel_messages
           WHERE channel_id = ${channelId} AND id < ${beforeId}
           ORDER BY id DESC
           LIMIT ${limit}
         `
-      : await this.prisma.$queryRaw<
-          {
-            id: number;
-            channel_id: number;
-            sender_id: number;
-            content: string;
-            created_at: Date;
-            pinned: boolean | null;
-          }[]
-        >`
-          SELECT id, channel_id, sender_id, content, created_at, pinned
+      : await this.prisma.$queryRaw<HistoryRow[]>`
+          SELECT id, channel_id, sender_id, content, created_at, pinned, reply_to_id
           FROM public.channel_messages
           WHERE channel_id = ${channelId}
           ORDER BY id DESC
           LIMIT ${limit}
         `;
     const messageIds = rows.map((m) => m.id);
-    const imageMap = await this.batchFetchImages(messageIds);
+    const replyToIds = rows.map((m) => m.reply_to_id).filter((id): id is number => id !== null);
+    const [imageMap, reactionMap, replyToMap] = await Promise.all([
+      this.batchFetchImages(messageIds),
+      this.batchFetchReactions(messageIds),
+      this.batchFetchReplyTo(replyToIds),
+    ]);
     const mapped = rows
       .slice()
       .reverse()
@@ -517,6 +546,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         createdAt: m.created_at,
         pinned: !!m.pinned,
         images: imageMap.get(m.id) || [],
+        reactions: reactionMap.get(m.id) || [],
+        replyToId: m.reply_to_id,
+        replyTo: m.reply_to_id ? replyToMap.get(m.reply_to_id) || null : null,
       }));
     const messages = await this.enrichMessagesWithSenderInfo(mapped);
     client.emit('message:history', {
@@ -593,11 +625,16 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         content: true,
         created_at: true,
         pinned: true,
+        reply_to_id: true,
       },
     });
-    // Fetch images for this message
-    const imageMap = await this.batchFetchImages([updated.id]);
-    // Broadcast to channel
+    const [imageMap, reactionMap, replyToMap] = await Promise.all([
+      this.batchFetchImages([updated.id]),
+      this.batchFetchReactions([updated.id]),
+      updated.reply_to_id
+        ? this.batchFetchReplyTo([updated.reply_to_id])
+        : Promise.resolve(new Map()),
+    ]);
     this.server.to(this.channelRoomName(channelId)).emit('message:pinned', {
       id: updated.id,
       channelId: updated.channel_id,
@@ -606,13 +643,287 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       createdAt: updated.created_at,
       pinned: !!updated.pinned,
       images: imageMap.get(updated.id) || [],
+      reactions: reactionMap.get(updated.id) || [],
+      replyToId: updated.reply_to_id,
+      replyTo: updated.reply_to_id
+        ? replyToMap.get(updated.reply_to_id) || null
+        : null,
     });
     client.emit('message:pin:ok', {
       messageId: updated.id,
       pinned: !!updated.pinned,
     });
   }
+  @SubscribeMessage('reaction:add')
+  async onReactionAdd(
+    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    payload: { channelId: number; messageId: number; emojiId: number },
+  ) {
+    const user: WsUser | undefined = (client.data as any).user;
+    if (!user?.id) {
+      client.emit('error', { message: 'Unauthorized' });
+      return;
+    }
+    const channelId = Number(payload?.channelId);
+    const messageId = Number(payload?.messageId);
+    const emojiId = Number(payload?.emojiId);
+    if (!channelId || !messageId || !emojiId) {
+      client.emit('error', { message: 'Invalid reaction data' });
+      return;
+    }
+    const can = await this.canViewChannel(user.id, channelId);
+    if (!can) {
+      client.emit('error', { message: 'Forbidden' });
+      return;
+    }
+    const msg = await this.prisma.channel_messages.findUnique({
+      where: { id: messageId },
+      select: { channel_id: true },
+    });
+    if (!msg || msg.channel_id !== channelId) {
+      client.emit('error', { message: 'Message not found in this channel' });
+      return;
+    }
+    const emoji = await this.prisma.emojis.findUnique({
+      where: { id: emojiId },
+      select: { id: true, name: true, url: true },
+    });
+    if (!emoji) {
+      client.emit('error', { message: 'Emoji not found' });
+      return;
+    }
+    await this.prisma.message_reactions.upsert({
+      where: {
+        message_id_user_id_emoji_id: {
+          message_id: messageId,
+          user_id: user.id,
+          emoji_id: emojiId,
+        },
+      },
+      create: { message_id: messageId, user_id: user.id, emoji_id: emojiId },
+      update: {},
+    });
+    this.server.to(this.channelRoomName(channelId)).emit('message:reaction', {
+      channelId,
+      messageId,
+      emojiId,
+      emoji: emoji.name,
+      emojiUrl: emoji.url,
+      userId: user.id,
+      action: 'add',
+    });
+  }
+
+  @SubscribeMessage('reaction:remove')
+  async onReactionRemove(
+    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    payload: { channelId: number; messageId: number; emojiId: number },
+  ) {
+    const user: WsUser | undefined = (client.data as any).user;
+    if (!user?.id) {
+      client.emit('error', { message: 'Unauthorized' });
+      return;
+    }
+    const channelId = Number(payload?.channelId);
+    const messageId = Number(payload?.messageId);
+    const emojiId = Number(payload?.emojiId);
+    if (!channelId || !messageId || !emojiId) {
+      client.emit('error', { message: 'Invalid reaction data' });
+      return;
+    }
+    const can = await this.canViewChannel(user.id, channelId);
+    if (!can) {
+      client.emit('error', { message: 'Forbidden' });
+      return;
+    }
+    await this.prisma.message_reactions.deleteMany({
+      where: { message_id: messageId, user_id: user.id, emoji_id: emojiId },
+    });
+    this.server
+      .to(this.channelRoomName(channelId))
+      .emit('message:reaction:removed', {
+        channelId,
+        messageId,
+        emojiId,
+        userId: user.id,
+      });
+  }
+
+  @SubscribeMessage('message:delete')
+  async onMessageDelete(
+    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    payload: { channelId: number; messageId: number },
+  ) {
+    const user: WsUser | undefined = (client.data as any).user;
+    if (!user?.id) {
+      client.emit('error', { message: 'Unauthorized' });
+      return;
+    }
+    const channelId = Number(payload?.channelId);
+    const messageId = Number(payload?.messageId);
+    if (!channelId || !messageId) {
+      client.emit('error', { message: 'Invalid channel or message id' });
+      return;
+    }
+    const msg = await this.prisma.channel_messages.findUnique({
+      where: { id: messageId },
+      select: { channel_id: true, sender_id: true },
+    });
+    if (!msg || msg.channel_id !== channelId) {
+      client.emit('error', { message: 'Message not found in this channel' });
+      return;
+    }
+    // Check permissions: sender can delete own, admin can delete any
+    if (msg.sender_id !== user.id) {
+      const channel = await this.prisma.chat_channels.findUnique({
+        where: { id: channelId },
+        select: { chat_servers_id: true },
+      });
+      if (!channel) {
+        client.emit('error', { message: 'Channel not found' });
+        return;
+      }
+      const adminRoleId = await this.getChatRoleTypeId('admin');
+      const membership = await this.prisma.chat_memberships.findUnique({
+        where: {
+          chat_server_id_user_id: {
+            chat_server_id: channel.chat_servers_id,
+            user_id: user.id,
+          },
+        },
+        select: { role_id: true },
+      });
+      if (!membership || membership.role_id !== adminRoleId) {
+        client.emit('error', {
+          message: 'You can only delete your own messages',
+        });
+        return;
+      }
+    }
+    await this.prisma.channel_messages.delete({ where: { id: messageId } });
+    this.server
+      .to(this.channelRoomName(channelId))
+      .emit('message:deleted', { channelId, messageId });
+    client.emit('message:delete:ok', { messageId });
+  }
+
   //Helper functions
+  private async batchFetchReactions(
+    messageIds: number[],
+  ): Promise<
+    Map<
+      number,
+      {
+        emojiId: number;
+        emoji: string;
+        emojiUrl: string;
+        users: { id: number; firstName: string | null }[];
+      }[]
+    >
+  > {
+    if (messageIds.length === 0) return new Map();
+    const reactions = await this.prisma.message_reactions.findMany({
+      where: { message_id: { in: messageIds } },
+      select: {
+        message_id: true,
+        emoji_id: true,
+        emojis: { select: { name: true, url: true } },
+        users: {
+          select: {
+            id: true,
+            creator_profiles: { select: { first_name: true } },
+            business_profiles: { select: { company_name: true } },
+          },
+        },
+      },
+    });
+    const map = new Map<
+      number,
+      {
+        emojiId: number;
+        emoji: string;
+        emojiUrl: string;
+        users: { id: number; firstName: string | null }[];
+      }[]
+    >();
+    for (const r of reactions) {
+      const arr = map.get(r.message_id) || [];
+      let group = arr.find((g) => g.emojiId === r.emoji_id);
+      if (!group) {
+        group = {
+          emojiId: r.emoji_id,
+          emoji: r.emojis.name,
+          emojiUrl: r.emojis.url,
+          users: [],
+        };
+        arr.push(group);
+      }
+      group.users.push({
+        id: r.users.id,
+        firstName:
+          r.users.creator_profiles?.first_name ??
+          r.users.business_profiles?.company_name ??
+          null,
+      });
+      map.set(r.message_id, arr);
+    }
+    return map;
+  }
+
+  private async batchFetchReplyTo(
+    replyToIds: number[],
+  ): Promise<
+    Map<
+      number,
+      {
+        id: number;
+        content: string;
+        senderId: number;
+        senderFirstName: string | null;
+      }
+    >
+  > {
+    if (replyToIds.length === 0) return new Map();
+    const msgs = await this.prisma.channel_messages.findMany({
+      where: { id: { in: replyToIds } },
+      select: {
+        id: true,
+        content: true,
+        sender_id: true,
+        users: {
+          select: {
+            creator_profiles: { select: { first_name: true } },
+            business_profiles: { select: { company_name: true } },
+          },
+        },
+      },
+    });
+    const map = new Map<
+      number,
+      {
+        id: number;
+        content: string;
+        senderId: number;
+        senderFirstName: string | null;
+      }
+    >();
+    for (const m of msgs) {
+      map.set(m.id, {
+        id: m.id,
+        content: m.content,
+        senderId: m.sender_id,
+        senderFirstName:
+          m.users.creator_profiles?.first_name ??
+          m.users.business_profiles?.company_name ??
+          null,
+      });
+    }
+    return map;
+  }
+
   private async batchFetchImages(
     messageIds: number[],
   ): Promise<Map<number, string[]>> {
