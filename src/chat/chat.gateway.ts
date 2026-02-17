@@ -26,6 +26,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   // Cache for lookup table IDs
   private lookupCache: {
     chatRoleTypes?: Map<string, number>;
+    videoStatuses?: Map<string, number>;
   } = {};
 
   constructor(
@@ -42,6 +43,16 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
     return this.lookupCache.chatRoleTypes.get(role) || null;
   }
+  private async getVideoStatusId(status: string): Promise<number | null> {
+    if (!this.lookupCache.videoStatuses) {
+      const statuses = await this.prisma.video_statuses.findMany();
+      this.lookupCache.videoStatuses = new Map(
+        statuses.map((s) => [s.video_status, s.id]),
+      );
+    }
+    return this.lookupCache.videoStatuses.get(status) || null;
+  }
+
   //Connections
   async handleConnection(client: Socket) {
     const token =
@@ -420,6 +431,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       where: { id: channelId },
       select: { channel_type_id: true, chat_servers_id: true },
     });
+    // Feedback channel (channel_type_id = 3): block regular messages, use feedback:reply
+    if (channel?.channel_type_id === 3) {
+      client.emit('error', {
+        message: 'Use feedback:reply to send messages in feedback channels',
+      });
+      return;
+    }
     if (channel?.channel_type_id === 2) {
       const adminRoleId = await this.getChatRoleTypeId('admin');
       const membership = await this.prisma.chat_memberships.findUnique({
@@ -837,6 +855,510 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       .to(this.channelRoomName(channelId))
       .emit('message:deleted', { channelId, messageId });
     client.emit('message:delete:ok', { messageId });
+  }
+
+  // ── Feedback channel events ──
+
+  @SubscribeMessage('feedback:submit')
+  async onFeedbackSubmit(
+    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    payload: {
+      channelId: number;
+      videoUrl: string;
+      coverUrl?: string;
+      title: string;
+      description?: string;
+      durationSeconds?: number;
+      fileSize?: number;
+    },
+  ) {
+    const user: WsUser | undefined = (client.data as any).user;
+    if (!user?.id) {
+      client.emit('error', { message: 'Unauthorized' });
+      return;
+    }
+    const channelId = Number(payload?.channelId);
+    const videoUrl = String(payload?.videoUrl || '').trim();
+    const title = String(payload?.title || '').trim();
+    if (!channelId || !videoUrl || !title) {
+      client.emit('error', { message: 'channelId, videoUrl and title are required' });
+      return;
+    }
+    const can = await this.canViewChannel(user.id, channelId);
+    if (!can) {
+      client.emit('error', { message: 'Forbidden' });
+      return;
+    }
+    const channel = await this.prisma.chat_channels.findUnique({
+      where: { id: channelId },
+      select: { channel_type_id: true, chat_servers_id: true },
+    });
+    if (!channel || channel.channel_type_id !== 3) {
+      client.emit('error', { message: 'This is not a feedback channel' });
+      return;
+    }
+    // Must not be admin (creators submit videos)
+    const adminRoleId = await this.getChatRoleTypeId('admin');
+    const membership = await this.prisma.chat_memberships.findUnique({
+      where: {
+        chat_server_id_user_id: {
+          chat_server_id: channel.chat_servers_id,
+          user_id: user.id,
+        },
+      },
+      select: { role_id: true },
+    });
+    if (membership?.role_id === adminRoleId) {
+      client.emit('error', { message: 'Only creators can submit videos' });
+      return;
+    }
+    // Get campaign_id from server
+    const server = await this.prisma.chat_servers.findUnique({
+      where: { id: channel.chat_servers_id },
+      select: { campaign_id: true },
+    });
+    if (!server) {
+      client.emit('error', { message: 'Server not found' });
+      return;
+    }
+    const underReviewId = await this.getVideoStatusId('under_review');
+    const video = await this.prisma.campaign_videos.create({
+      data: {
+        campaign_id: server.campaign_id,
+        creator_id: user.id,
+        title,
+        description: payload.description || null,
+        video_url: videoUrl,
+        cover_url: payload.coverUrl || null,
+        duration_seconds: payload.durationSeconds || null,
+        file_size: payload.fileSize || null,
+        submitted_at: new Date(),
+        status_id: underReviewId,
+      },
+    });
+    // Fetch creator profile for broadcast
+    const creator = await this.prisma.users.findUnique({
+      where: { id: user.id },
+      select: {
+        creator_profiles: {
+          select: { first_name: true, last_name: true, profile_image_url: true },
+        },
+      },
+    });
+    this.server.to(this.channelRoomName(channelId)).emit('feedback:submitted', {
+      channelId,
+      video: {
+        id: video.id,
+        title: video.title,
+        description: video.description,
+        videoUrl: video.video_url,
+        coverUrl: video.cover_url,
+        status: 'under_review',
+        creatorId: user.id,
+        creatorFirstName: creator?.creator_profiles?.first_name ?? null,
+        creatorLastName: creator?.creator_profiles?.last_name ?? null,
+        creatorImageUrl: creator?.creator_profiles?.profile_image_url ?? null,
+        createdAt: video.created_at,
+        messageCount: 0,
+      },
+    });
+  }
+
+  @SubscribeMessage('feedback:videos')
+  async onFeedbackVideos(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { channelId: number },
+  ) {
+    const user: WsUser | undefined = (client.data as any).user;
+    if (!user?.id) {
+      client.emit('error', { message: 'Unauthorized' });
+      return;
+    }
+    const channelId = Number(payload?.channelId);
+    if (!channelId) {
+      client.emit('error', { message: 'Invalid channel id' });
+      return;
+    }
+    const can = await this.canViewChannel(user.id, channelId);
+    if (!can) {
+      client.emit('error', { message: 'Forbidden' });
+      return;
+    }
+    const channel = await this.prisma.chat_channels.findUnique({
+      where: { id: channelId },
+      select: { channel_type_id: true, chat_servers_id: true },
+    });
+    if (!channel || channel.channel_type_id !== 3) {
+      client.emit('error', { message: 'This is not a feedback channel' });
+      return;
+    }
+    const server = await this.prisma.chat_servers.findUnique({
+      where: { id: channel.chat_servers_id },
+      select: { campaign_id: true },
+    });
+    if (!server) {
+      client.emit('error', { message: 'Server not found' });
+      return;
+    }
+    const videos = await this.prisma.campaign_videos.findMany({
+      where: { campaign_id: server.campaign_id },
+      orderBy: { created_at: 'desc' },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        video_url: true,
+        cover_url: true,
+        status_id: true,
+        creator_id: true,
+        created_at: true,
+        video_statuses: { select: { video_status: true } },
+        creator_profiles: {
+          select: {
+            first_name: true,
+            last_name: true,
+            profile_image_url: true,
+          },
+        },
+        _count: {
+          select: {
+            channel_messages: {
+              where: { channel_id: channelId },
+            },
+          },
+        },
+      },
+    });
+    client.emit('feedback:videos', {
+      channelId,
+      videos: videos.map((v) => ({
+        id: v.id,
+        title: v.title,
+        description: v.description,
+        videoUrl: v.video_url,
+        coverUrl: v.cover_url,
+        status: v.video_statuses?.video_status ?? 'under_review',
+        creatorId: v.creator_id,
+        creatorFirstName: v.creator_profiles?.first_name ?? null,
+        creatorLastName: v.creator_profiles?.last_name ?? null,
+        creatorImageUrl: v.creator_profiles?.profile_image_url ?? null,
+        messageCount: v._count.channel_messages,
+        createdAt: v.created_at,
+      })),
+    });
+  }
+
+  @SubscribeMessage('feedback:thread')
+  async onFeedbackThread(
+    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    payload: {
+      channelId: number;
+      campaignVideoId: number;
+      beforeId?: number;
+      limit?: number;
+    },
+  ) {
+    const user: WsUser | undefined = (client.data as any).user;
+    if (!user?.id) {
+      client.emit('error', { message: 'Unauthorized' });
+      return;
+    }
+    const channelId = Number(payload?.channelId);
+    const campaignVideoId = Number(payload?.campaignVideoId);
+    const limit = Math.min(Math.max(Number(payload?.limit) || 50, 1), 200);
+    const beforeId = payload?.beforeId ? Number(payload.beforeId) : undefined;
+    if (!channelId || !campaignVideoId) {
+      client.emit('error', { message: 'Invalid channel or video id' });
+      return;
+    }
+    const can = await this.canViewChannel(user.id, channelId);
+    if (!can) {
+      client.emit('error', { message: 'Forbidden' });
+      return;
+    }
+    type ThreadRow = {
+      id: number;
+      channel_id: number;
+      sender_id: number;
+      content: string;
+      created_at: Date;
+      reply_to_id: number | null;
+    };
+    const rows = beforeId
+      ? await this.prisma.$queryRaw<ThreadRow[]>`
+          SELECT id, channel_id, sender_id, content, created_at, reply_to_id
+          FROM public.channel_messages
+          WHERE channel_id = ${channelId}
+            AND campaign_video_id = ${campaignVideoId}
+            AND id < ${beforeId}
+          ORDER BY id DESC
+          LIMIT ${limit}
+        `
+      : await this.prisma.$queryRaw<ThreadRow[]>`
+          SELECT id, channel_id, sender_id, content, created_at, reply_to_id
+          FROM public.channel_messages
+          WHERE channel_id = ${channelId}
+            AND campaign_video_id = ${campaignVideoId}
+          ORDER BY id DESC
+          LIMIT ${limit}
+        `;
+    const messageIds = rows.map((m) => m.id);
+    const replyToIds = rows
+      .map((m) => m.reply_to_id)
+      .filter((id): id is number => id !== null);
+    const [imageMap, reactionMap, replyToMap] = await Promise.all([
+      this.batchFetchImages(messageIds),
+      this.batchFetchReactions(messageIds),
+      this.batchFetchReplyTo(replyToIds),
+    ]);
+    const mapped = rows
+      .slice()
+      .reverse()
+      .map((m) => ({
+        id: m.id,
+        channelId: m.channel_id,
+        senderId: m.sender_id,
+        content: m.content,
+        createdAt: m.created_at,
+        images: imageMap.get(m.id) || [],
+        reactions: reactionMap.get(m.id) || [],
+        replyToId: m.reply_to_id,
+        replyTo: m.reply_to_id ? replyToMap.get(m.reply_to_id) || null : null,
+      }));
+    const messages = await this.enrichMessagesWithSenderInfo(mapped);
+    client.emit('feedback:thread', {
+      channelId,
+      campaignVideoId,
+      messages,
+      nextBeforeId: rows.length > 0 ? rows[rows.length - 1].id : null,
+      hasMore: rows.length === limit,
+    });
+  }
+
+  @SubscribeMessage('feedback:reply')
+  async onFeedbackReply(
+    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    payload: {
+      channelId: number;
+      campaignVideoId: number;
+      content: string;
+      imageUrls?: string[];
+      replyToId?: number;
+    },
+  ) {
+    const user: WsUser | undefined = (client.data as any).user;
+    if (!user?.id) {
+      client.emit('error', { message: 'Unauthorized' });
+      return;
+    }
+    const channelId = Number(payload?.channelId);
+    const campaignVideoId = Number(payload?.campaignVideoId);
+    const content = String(payload?.content || '').trim();
+    const imageUrls = Array.isArray(payload?.imageUrls)
+      ? payload.imageUrls
+      : [];
+    const replyToId = payload?.replyToId ? Number(payload.replyToId) : null;
+    if (!channelId || !campaignVideoId || (!content && imageUrls.length === 0)) {
+      client.emit('error', { message: 'Invalid feedback reply' });
+      return;
+    }
+    if (imageUrls.length > 5) {
+      client.emit('error', { message: 'Maximum 5 images per message' });
+      return;
+    }
+    const cloudinaryPattern = /^https:\/\/res\.cloudinary\.com\//;
+    for (const url of imageUrls) {
+      if (typeof url !== 'string' || !cloudinaryPattern.test(url)) {
+        client.emit('error', { message: 'Invalid image URL' });
+        return;
+      }
+    }
+    const can = await this.canViewChannel(user.id, channelId);
+    if (!can) {
+      client.emit('error', { message: 'Forbidden' });
+      return;
+    }
+    // Verify video exists
+    const video = await this.prisma.campaign_videos.findUnique({
+      where: { id: campaignVideoId },
+      select: { creator_id: true },
+    });
+    if (!video) {
+      client.emit('error', { message: 'Video not found' });
+      return;
+    }
+    // Only the video creator or server admin can reply
+    const channel = await this.prisma.chat_channels.findUnique({
+      where: { id: channelId },
+      select: { chat_servers_id: true },
+    });
+    if (!channel) {
+      client.emit('error', { message: 'Channel not found' });
+      return;
+    }
+    const adminRoleId = await this.getChatRoleTypeId('admin');
+    const membership = await this.prisma.chat_memberships.findUnique({
+      where: {
+        chat_server_id_user_id: {
+          chat_server_id: channel.chat_servers_id,
+          user_id: user.id,
+        },
+      },
+      select: { role_id: true },
+    });
+    const isAdmin = membership?.role_id === adminRoleId;
+    if (!isAdmin && video.creator_id !== user.id) {
+      client.emit('error', {
+        message: 'Only the video creator or admin can reply',
+      });
+      return;
+    }
+    const rows = await this.prisma.$queryRaw<
+      {
+        id: number;
+        channel_id: number;
+        sender_id: number;
+        content: string;
+        created_at: Date;
+        reply_to_id: number | null;
+      }[]
+    >`
+      INSERT INTO public.channel_messages (channel_id, sender_id, content, campaign_video_id, reply_to_id)
+      VALUES (${channelId}, ${user.id}, ${content}, ${campaignVideoId}, ${replyToId})
+      RETURNING id, channel_id, sender_id, content, created_at, reply_to_id
+    `;
+    const msg = rows[0];
+    if (imageUrls.length > 0) {
+      await this.prisma.channel_message_images.createMany({
+        data: imageUrls.map((url, i) => ({
+          message_id: msg.id,
+          image_url: url,
+          sort_order: i,
+        })),
+      });
+    }
+    let replyTo: any = null;
+    if (msg.reply_to_id) {
+      const replyMap = await this.batchFetchReplyTo([msg.reply_to_id]);
+      replyTo = replyMap.get(msg.reply_to_id) || null;
+    }
+    const [enriched] = await this.enrichMessagesWithSenderInfo([
+      {
+        id: msg.id,
+        channelId: msg.channel_id,
+        senderId: msg.sender_id,
+        content: msg.content,
+        createdAt: msg.created_at,
+        images: imageUrls,
+        reactions: [],
+        replyToId: msg.reply_to_id,
+        replyTo,
+        campaignVideoId,
+      },
+    ]);
+    this.server
+      .to(this.channelRoomName(channelId))
+      .emit('feedback:message', enriched);
+    client.emit('feedback:reply:ack', { id: msg.id });
+  }
+
+  @SubscribeMessage('feedback:review')
+  async onFeedbackReview(
+    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    payload: {
+      channelId: number;
+      campaignVideoId: number;
+      status: string;
+      comment?: string;
+    },
+  ) {
+    const user: WsUser | undefined = (client.data as any).user;
+    if (!user?.id) {
+      client.emit('error', { message: 'Unauthorized' });
+      return;
+    }
+    const channelId = Number(payload?.channelId);
+    const campaignVideoId = Number(payload?.campaignVideoId);
+    const status = String(payload?.status || '').trim();
+    if (
+      !channelId ||
+      !campaignVideoId ||
+      !['approved', 'rejected'].includes(status)
+    ) {
+      client.emit('error', {
+        message: 'Invalid review data (status must be approved or rejected)',
+      });
+      return;
+    }
+    // Admin only
+    const channel = await this.prisma.chat_channels.findUnique({
+      where: { id: channelId },
+      select: { chat_servers_id: true, channel_type_id: true },
+    });
+    if (!channel || channel.channel_type_id !== 3) {
+      client.emit('error', { message: 'This is not a feedback channel' });
+      return;
+    }
+    const adminRoleId = await this.getChatRoleTypeId('admin');
+    const membership = await this.prisma.chat_memberships.findUnique({
+      where: {
+        chat_server_id_user_id: {
+          chat_server_id: channel.chat_servers_id,
+          user_id: user.id,
+        },
+      },
+      select: { role_id: true },
+    });
+    if (!membership || membership.role_id !== adminRoleId) {
+      client.emit('error', { message: 'Forbidden: admin only' });
+      return;
+    }
+    // Verify video exists and belongs to this campaign
+    const server = await this.prisma.chat_servers.findUnique({
+      where: { id: channel.chat_servers_id },
+      select: { campaign_id: true },
+    });
+    if (!server) {
+      client.emit('error', { message: 'Server not found' });
+      return;
+    }
+    const video = await this.prisma.campaign_videos.findUnique({
+      where: { id: campaignVideoId },
+      select: { id: true, campaign_id: true },
+    });
+    if (!video || video.campaign_id !== server.campaign_id) {
+      client.emit('error', { message: 'Video not found in this campaign' });
+      return;
+    }
+    const statusId = await this.getVideoStatusId(status);
+    await this.prisma.campaign_videos.update({
+      where: { id: campaignVideoId },
+      data: {
+        status_id: statusId,
+        reviewed_at: new Date(),
+        reviewed_by: user.id,
+        review_comments: payload.comment || null,
+      },
+    });
+    // If there's a comment, insert it as a thread message
+    if (payload.comment?.trim()) {
+      await this.prisma.$queryRaw`
+        INSERT INTO public.channel_messages (channel_id, sender_id, content, campaign_video_id)
+        VALUES (${channelId}, ${user.id}, ${payload.comment.trim()}, ${campaignVideoId})
+      `;
+    }
+    this.server.to(this.channelRoomName(channelId)).emit('feedback:reviewed', {
+      channelId,
+      campaignVideoId,
+      status,
+      comment: payload.comment || null,
+      reviewedBy: user.id,
+    });
+    client.emit('feedback:review:ok', { campaignVideoId, status });
   }
 
   //Helper functions

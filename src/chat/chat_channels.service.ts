@@ -804,4 +804,38 @@ export class ChatChannelsService {
 
     return { images };
   }
+
+  async uploadFeedbackVideo(
+    serverId: number,
+    channelId: number,
+    userId: number,
+    file: any,
+  ) {
+    const channel = await this.prisma.chat_channels.findUnique({
+      where: { id: channelId },
+      select: { chat_servers_id: true, channel_type_id: true },
+    });
+    if (!channel || channel.chat_servers_id !== serverId) {
+      throw new NotFoundException('Channel not found in this server');
+    }
+    if (channel.channel_type_id !== 3) {
+      throw new BadRequestException('This is not a feedback channel');
+    }
+    const membership = await this.prisma.chat_memberships.findUnique({
+      where: {
+        chat_server_id_user_id: {
+          chat_server_id: serverId,
+          user_id: userId,
+        },
+      },
+      select: { id: true },
+    });
+    if (!membership) {
+      throw new ForbiddenException('You are not a member of this server');
+    }
+    if (!file?.cloudinaryUrl) {
+      throw new BadRequestException('Video upload failed');
+    }
+    return { videoUrl: file.cloudinaryUrl };
+  }
 }

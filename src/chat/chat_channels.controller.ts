@@ -31,6 +31,7 @@ import { AddMemberDto } from './dto/add-member.dto';
 import { AddMembersDto } from './dto/add-members.dto';
 import { UpdateServerDto } from './dto/update-server.dto';
 import { ChatImagesMulterInterceptor } from '../common/interceptors/chat-images-multer.interceptor';
+import { ChatVideoMulterInterceptor } from '../common/interceptors/chat-video-multer.interceptor';
 
 @ApiTags('Chat Channels')
 @ApiBearerAuth('JWT-auth')
@@ -249,6 +250,35 @@ export class ChatChannelsController {
       channelId,
       user.id,
       req.files,
+    );
+  }
+
+  @ApiOperation({ summary: 'Upload a video for feedback channel' })
+  @ApiParam({ name: 'serverId', type: Number })
+  @ApiParam({ name: 'channelId', type: Number })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        video: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Video uploaded successfully' })
+  @UseInterceptors(ChatVideoMulterInterceptor)
+  @Post(':channelId/feedback-video')
+  uploadFeedbackVideo(
+    @Param('serverId', ParseIntPipe) serverId: number,
+    @Param('channelId', ParseIntPipe) channelId: number,
+    @CurrentUser() user: RequestUser,
+    @Req() req: any,
+  ) {
+    return this.service.uploadFeedbackVideo(
+      serverId,
+      channelId,
+      user.id,
+      req.file,
     );
   }
 }

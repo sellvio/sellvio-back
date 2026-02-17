@@ -186,6 +186,7 @@ model campaign_videos {
   creator_profiles   creator_profiles     @relation(fields: [creator_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
   users              users?               @relation(fields: [reviewed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
   video_statuses     video_statuses?      @relation(fields: [status_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  channel_messages   channel_messages[]
   video_analytics    video_analytics[]
   video_social_posts video_social_posts[]
 
@@ -551,13 +552,16 @@ model channel_messages {
   reply_to_id            Int?
   chat_channels          chat_channels            @relation(fields: [channel_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   users                  users                    @relation(fields: [sender_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  campaign_video_id      Int?
   reply_to               channel_messages?        @relation("message_replies", fields: [reply_to_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
   replies                channel_messages[]       @relation("message_replies")
+  campaign_videos        campaign_videos?         @relation(fields: [campaign_video_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   channel_message_images channel_message_images[]
   message_reactions      message_reactions[]
 
   @@index([channel_id], map: "idx_channel_messages_channel")
   @@index([sender_id], map: "idx_channel_messages_sender")
+  @@index([campaign_video_id], map: "idx_channel_messages_video")
 }
 
 model channel_message_images {
