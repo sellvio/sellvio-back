@@ -431,6 +431,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       where: { id: channelId },
       select: { channel_type_id: true, chat_servers_id: true },
     });
+    // Verification channel (channel_type_id = 4): no manual messages
+    if (channel?.channel_type_id === 4) {
+      client.emit('error', {
+        message: 'Messages cannot be sent in verification channels',
+      });
+      return;
+    }
     // Feedback channel (channel_type_id = 3): block regular messages, use feedback:reply
     if (channel?.channel_type_id === 3) {
       client.emit('error', {
@@ -1359,6 +1366,186 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       reviewedBy: user.id,
     });
     client.emit('feedback:review:ok', { campaignVideoId, status });
+  }
+
+  // ── Verification channel events ──
+
+  @SubscribeMessage('verification:videos')
+  async onVerificationVideos(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { channelId: number },
+  ) {
+    const user: WsUser | undefined = (client.data as any).user;
+    if (!user?.id) {
+      client.emit('error', { message: 'Unauthorized' });
+      return;
+    }
+    const channelId = Number(payload?.channelId);
+    if (!channelId) {
+      client.emit('error', { message: 'Invalid channel id' });
+      return;
+    }
+    const can = await this.canViewChannel(user.id, channelId);
+    if (!can) {
+      client.emit('error', { message: 'Forbidden' });
+      return;
+    }
+    const channel = await this.prisma.chat_channels.findUnique({
+      where: { id: channelId },
+      select: { channel_type_id: true, chat_servers_id: true },
+    });
+    if (!channel || channel.channel_type_id !== 4) {
+      client.emit('error', { message: 'This is not a verification channel' });
+      return;
+    }
+    const server = await this.prisma.chat_servers.findUnique({
+      where: { id: channel.chat_servers_id },
+      select: { campaign_id: true },
+    });
+    if (!server) {
+      client.emit('error', { message: 'Server not found' });
+      return;
+    }
+    // Fetch approved videos that have social posts
+    const approvedStatusId = await this.getVideoStatusId('approved');
+    const videos = await this.prisma.campaign_videos.findMany({
+      where: {
+        campaign_id: server.campaign_id,
+        status_id: approvedStatusId,
+        video_social_posts: { some: {} },
+      },
+      orderBy: { created_at: 'desc' },
+      select: {
+        id: true,
+        title: true,
+        video_url: true,
+        cover_url: true,
+        creator_id: true,
+        created_at: true,
+        creator_profiles: {
+          select: {
+            first_name: true,
+            last_name: true,
+            profile_image_url: true,
+          },
+        },
+        video_social_posts: {
+          select: {
+            id: true,
+            platform: true,
+            post_url: true,
+            posted_at: true,
+            is_verified: true,
+          },
+        },
+      },
+    });
+    client.emit('verification:videos', {
+      channelId,
+      videos: videos.map((v) => ({
+        id: v.id,
+        title: v.title,
+        videoUrl: v.video_url,
+        coverUrl: v.cover_url,
+        creatorId: v.creator_id,
+        creatorFirstName: v.creator_profiles?.first_name ?? null,
+        creatorLastName: v.creator_profiles?.last_name ?? null,
+        creatorImageUrl: v.creator_profiles?.profile_image_url ?? null,
+        createdAt: v.created_at,
+        socialPosts: v.video_social_posts.map((sp) => ({
+          id: sp.id,
+          platform: sp.platform,
+          postUrl: sp.post_url,
+          postedAt: sp.posted_at,
+          isVerified: !!sp.is_verified,
+        })),
+      })),
+    });
+  }
+
+  @SubscribeMessage('verification:review')
+  async onVerificationReview(
+    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    payload: {
+      channelId: number;
+      socialPostId: number;
+      verified: boolean;
+    },
+  ) {
+    const user: WsUser | undefined = (client.data as any).user;
+    if (!user?.id) {
+      client.emit('error', { message: 'Unauthorized' });
+      return;
+    }
+    const channelId = Number(payload?.channelId);
+    const socialPostId = Number(payload?.socialPostId);
+    const verified = Boolean(payload?.verified);
+    if (!channelId || !socialPostId) {
+      client.emit('error', { message: 'Invalid channel or social post id' });
+      return;
+    }
+    const channel = await this.prisma.chat_channels.findUnique({
+      where: { id: channelId },
+      select: { channel_type_id: true, chat_servers_id: true },
+    });
+    if (!channel || channel.channel_type_id !== 4) {
+      client.emit('error', { message: 'This is not a verification channel' });
+      return;
+    }
+    // Admin only
+    const adminRoleId = await this.getChatRoleTypeId('admin');
+    const membership = await this.prisma.chat_memberships.findUnique({
+      where: {
+        chat_server_id_user_id: {
+          chat_server_id: channel.chat_servers_id,
+          user_id: user.id,
+        },
+      },
+      select: { role_id: true },
+    });
+    if (!membership || membership.role_id !== adminRoleId) {
+      client.emit('error', { message: 'Forbidden: admin only' });
+      return;
+    }
+    // Verify the social post exists and belongs to this campaign
+    const server = await this.prisma.chat_servers.findUnique({
+      where: { id: channel.chat_servers_id },
+      select: { campaign_id: true },
+    });
+    if (!server) {
+      client.emit('error', { message: 'Server not found' });
+      return;
+    }
+    const socialPost = await this.prisma.video_social_posts.findUnique({
+      where: { id: socialPostId },
+      select: {
+        id: true,
+        campaign_videos: { select: { campaign_id: true } },
+      },
+    });
+    if (
+      !socialPost ||
+      socialPost.campaign_videos.campaign_id !== server.campaign_id
+    ) {
+      client.emit('error', {
+        message: 'Social post not found in this campaign',
+      });
+      return;
+    }
+    await this.prisma.video_social_posts.update({
+      where: { id: socialPostId },
+      data: { is_verified: verified },
+    });
+    this.server
+      .to(this.channelRoomName(channelId))
+      .emit('verification:reviewed', {
+        channelId,
+        socialPostId,
+        verified,
+        reviewedBy: user.id,
+      });
+    client.emit('verification:review:ok', { socialPostId, verified });
   }
 
   //Helper functions
