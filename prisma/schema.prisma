@@ -242,7 +242,7 @@ model chat_channels {
   id                  Int                   @id @default(autoincrement())
   chat_servers_id     Int
   name                String                @db.VarChar(100)
-  channel_type        channel_type?         @default(other)
+  channel_type        channel_type?         @default(general)
   description         String?
   created_at          DateTime?             @default(now()) @db.Timestamptz(6)
   channel_state       String?               @default("public") @db.VarChar(100)
@@ -753,11 +753,9 @@ enum campaign_status {
 
 enum channel_type {
   general
-  announcements
+  rules
   feedback
-  brand_assets
-  requirements
-  other
+  verification
 }
 
 enum chat_role_type {

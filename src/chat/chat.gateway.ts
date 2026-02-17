@@ -326,7 +326,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       LIMIT ${limit}
     `;
     const messageIds = rows.map((m) => m.id);
-    const replyToIds = rows.map((m) => m.reply_to_id).filter((id): id is number => id !== null);
+    const replyToIds = rows
+      .map((m) => m.reply_to_id)
+      .filter((id): id is number => id !== null);
     const [imageMap, reactionMap, replyToMap] = await Promise.all([
       this.batchFetchImages(messageIds),
       this.batchFetchReactions(messageIds),
@@ -413,6 +415,29 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client.emit('error', { message: 'Forbidden' });
       return;
     }
+    // Rules channel (channel_type_id = 2): only admin can write
+    const channel = await this.prisma.chat_channels.findUnique({
+      where: { id: channelId },
+      select: { channel_type_id: true, chat_servers_id: true },
+    });
+    if (channel?.channel_type_id === 2) {
+      const adminRoleId = await this.getChatRoleTypeId('admin');
+      const membership = await this.prisma.chat_memberships.findUnique({
+        where: {
+          chat_server_id_user_id: {
+            chat_server_id: channel.chat_servers_id,
+            user_id: user.id,
+          },
+        },
+        select: { role_id: true },
+      });
+      if (!membership || membership.role_id !== adminRoleId) {
+        client.emit('error', {
+          message: 'Only admins can write in this channel',
+        });
+        return;
+      }
+    }
     // Validate reply target belongs to the same channel
     if (replyToId) {
       const replyTarget = await this.prisma.channel_messages.findUnique({
@@ -420,7 +445,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         select: { channel_id: true },
       });
       if (!replyTarget || replyTarget.channel_id !== channelId) {
-        client.emit('error', { message: 'Reply target not found in this channel' });
+        client.emit('error', {
+          message: 'Reply target not found in this channel',
+        });
         return;
       }
     }
@@ -529,7 +556,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           LIMIT ${limit}
         `;
     const messageIds = rows.map((m) => m.id);
-    const replyToIds = rows.map((m) => m.reply_to_id).filter((id): id is number => id !== null);
+    const replyToIds = rows
+      .map((m) => m.reply_to_id)
+      .filter((id): id is number => id !== null);
     const [imageMap, reactionMap, replyToMap] = await Promise.all([
       this.batchFetchImages(messageIds),
       this.batchFetchReactions(messageIds),
@@ -811,9 +840,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   //Helper functions
-  private async batchFetchReactions(
-    messageIds: number[],
-  ): Promise<
+  private async batchFetchReactions(messageIds: number[]): Promise<
     Map<
       number,
       {
@@ -873,9 +900,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return map;
   }
 
-  private async batchFetchReplyTo(
-    replyToIds: number[],
-  ): Promise<
+  private async batchFetchReplyTo(replyToIds: number[]): Promise<
     Map<
       number,
       {
