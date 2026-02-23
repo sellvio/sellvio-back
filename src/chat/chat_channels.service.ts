@@ -258,10 +258,7 @@ export class ChatChannelsService {
       },
       select: { status_id: true },
     });
-    if (
-      !participation ||
-      participation.status_id !== approvedStatusId
-    ) {
+    if (!participation || participation.status_id !== approvedStatusId) {
       throw new BadRequestException(
         'Creator must be an approved participant of the campaign',
       );
@@ -411,10 +408,15 @@ export class ChatChannelsService {
     const memberships = await this.prisma.chat_memberships.findMany({
       where: { chat_server_id: serverId },
       orderBy: { joined_at: 'asc' },
-      select: {
-        user_id: true,
-        role_id: true,
-        joined_at: true,
+      include: {
+        users: {
+          select: {
+            id: true,
+            email: true,
+            user_type_id: true,
+          },
+        },
+        chat_role_types: true,
       },
     });
     const userIds = memberships.map((m) => m.user_id);
@@ -428,8 +430,8 @@ export class ChatChannelsService {
     const idToUser = new Map(users.map((u) => [u.id, u]));
     return memberships.map((m) => ({
       user: idToUser.get(m.user_id) || { id: m.user_id },
-      role_id: m.role_id,
       joined_at: m.joined_at,
+      role: m.chat_role_types?.chat_role_type,
     }));
   }
 
@@ -593,7 +595,12 @@ export class ChatChannelsService {
       creatorIds.length > 0
         ? await this.prisma.creator_profiles.findMany({
             where: { user_id: { in: creatorIds } },
-            select: { user_id: true, first_name: true, last_name: true, profile_image_url: true },
+            select: {
+              user_id: true,
+              first_name: true,
+              last_name: true,
+              profile_image_url: true,
+            },
           })
         : [];
     const businessProfiles =
@@ -604,8 +611,12 @@ export class ChatChannelsService {
           })
         : [];
 
-    const creatorProfileMap = new Map(creatorProfiles.map((p) => [p.user_id, p] as const));
-    const businessProfileMap = new Map(businessProfiles.map((p) => [p.user_id, p] as const));
+    const creatorProfileMap = new Map(
+      creatorProfiles.map((p) => [p.user_id, p] as const),
+    );
+    const businessProfileMap = new Map(
+      businessProfiles.map((p) => [p.user_id, p] as const),
+    );
     const idToUser = new Map(users.map((u) => [u.id, u] as const));
 
     return invitable.map((m) => {
@@ -674,7 +685,10 @@ export class ChatChannelsService {
       select: { id: true },
     });
     if (existing) {
-      return { success: true, message: 'User is already a member of this channel' };
+      return {
+        success: true,
+        message: 'User is already a member of this channel',
+      };
     }
 
     // Add member
