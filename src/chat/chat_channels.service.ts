@@ -151,13 +151,13 @@ export class ChatChannelsService {
     if (!server) throw new NotFoundException('Chat server not found');
 
     const channelState = data.channel_state || undefined;
-    const channelTypeId = await this.getChannelTypeId('other');
+    const channelTypeId = await this.getChannelTypeId('general');
     const created = await this.prisma.chat_channels.create({
       data: {
         chat_servers_id: serverId,
         name: data.name,
         // Force default channel type to 'other' regardless of input
-        channel_type_id: channelTypeId,
+        channel_type_id: 1,
         description: data.description ?? null,
       },
     });
