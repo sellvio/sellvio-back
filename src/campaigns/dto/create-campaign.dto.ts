@@ -15,8 +15,19 @@ import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { chat_type, social_platform } from '@prisma/client';
 
-const CAMPAIGN_STATUS_VALUES = ['draft', 'active', 'paused', 'completed', 'cancelled'];
-const CREATOR_TYPE_VALUES = ['beginner', 'experienced', 'influencer'];
+const CAMPAIGN_STATUS_VALUES = [
+  'draft',
+  'active',
+  'paused',
+  'completed',
+  'cancelled',
+];
+const CREATOR_TYPE_VALUES = [
+  'beginner',
+  'experienced',
+  'influencer',
+  'clipper',
+];
 const PAYMENT_TYPE_VALUES = ['cost_per_view', 'fixed', 'revenue_share'];
 
 export class CreateCampaignDto {
