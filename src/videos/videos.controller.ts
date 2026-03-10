@@ -22,6 +22,7 @@ import {
 import { VideosService } from './videos.service';
 import { CreateVideoDto } from './dto/create-video.dto';
 import { ReviewVideoDto } from './dto/review-video.dto';
+import { AddSocialPostDto } from './dto/add-social-post.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -477,60 +478,60 @@ export class VideosController {
   }
 
   @ApiOperation({
-    summary: 'Update social media post information',
-    description: `Update social media posting information for a video.
+    summary: 'Add public social media post link for an approved video (creator only)',
+    description: `Add a public social media post URL to an approved video.
 
-**Updates Include:**
-- Platform where video was posted
-- Direct link to the social media post
-- Platform-specific post ID for analytics
-- Posting timestamp
+**Requirements:**
+- Caller must be the creator who owns the video
+- Video must have 'approved' status
 
 **Platform Support:**
 - Instagram (posts, reels, stories)
 - TikTok videos
-- YouTube shorts and videos
 - Facebook posts
 
 **Post-Update Actions:**
 - Enables analytics tracking
-- Triggers payment processing
-- Updates campaign statistics
-- Notifies stakeholders`,
+- Updates campaign statistics`,
   })
   @ApiParam({
     name: 'id',
     type: 'number',
-    description: 'Video ID to update social post info for',
+    description: 'Video ID to add social post for',
     example: 1,
-  })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        platform: {
-          enum: ['instagram', 'tiktok', 'youtube', 'facebook'],
-          description: 'Social media platform',
-          example: 'instagram',
-        },
-        post_url: {
-          type: 'string',
-          description: 'Direct URL to the social media post',
-          example: 'https://instagram.com/p/ABC123',
-        },
-        platform_post_id: {
-          type: 'string',
-          description: 'Platform-specific post ID (optional)',
-          example: 'ABC123DEF456',
-        },
-      },
-      required: ['platform', 'post_url'],
-    },
   })
   @ApiResponse({
     status: 200,
-    description: 'Social post information updated successfully',
+    description: 'Social post link added successfully',
     type: VideoSocialPostDto,
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Access denied - Not the owner of the video',
+    schema: {
+      example: {
+        statusCode: 403,
+        timestamp: '2024-01-01T00:00:00.000Z',
+        path: '/videos/1/social-post',
+        method: 'PATCH',
+        error: 'Forbidden',
+        message: 'You can only add social posts to your own videos',
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Video is not approved',
+    schema: {
+      example: {
+        statusCode: 400,
+        timestamp: '2024-01-01T00:00:00.000Z',
+        path: '/videos/1/social-post',
+        method: 'PATCH',
+        error: 'Bad Request',
+        message: 'You can only add social posts to approved videos',
+      },
+    },
   })
   @ApiResponse({
     status: 404,
@@ -542,37 +543,78 @@ export class VideosController {
         path: '/videos/1/social-post',
         method: 'PATCH',
         error: 'Not Found',
-        message: 'Video with ID 1 not found',
+        message: 'Video not found',
+      },
+    },
+  })
+  @UseGuards(RolesGuard)
+  @Roles('creator')
+  @Patch(':id/social-post')
+  updateSocialPost(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() addSocialPostDto: AddSocialPostDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.videosService.updateSocialPost(
+      id,
+      user.id,
+      addSocialPostDto.platform,
+      addSocialPostDto.post_url,
+      addSocialPostDto.platform_post_id,
+    );
+  }
+
+  @ApiOperation({
+    summary: 'Verify a video social post (business only)',
+    description: `Mark a video social post as verified. Only the business owner of the campaign can verify posts.`,
+  })
+  @ApiParam({
+    name: 'socialPostId',
+    type: 'number',
+    description: 'Social post ID to verify',
+    example: 1,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Social post verified successfully',
+    type: VideoSocialPostDto,
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Access denied - Not the campaign owner',
+    schema: {
+      example: {
+        statusCode: 403,
+        timestamp: '2024-01-01T00:00:00.000Z',
+        path: '/videos/social-posts/1/verify',
+        method: 'PATCH',
+        error: 'Forbidden',
+        message: 'You can only verify social posts for your own campaigns',
       },
     },
   })
   @ApiResponse({
-    status: 400,
-    description: 'Invalid social post data',
+    status: 404,
+    description: 'Social post not found',
     schema: {
       example: {
-        statusCode: 400,
+        statusCode: 404,
         timestamp: '2024-01-01T00:00:00.000Z',
-        path: '/videos/1/social-post',
+        path: '/videos/social-posts/1/verify',
         method: 'PATCH',
-        error: 'Bad Request',
-        message: 'Invalid platform or post URL format',
+        error: 'Not Found',
+        message: 'Social post not found',
       },
     },
   })
-  @Patch(':id/social-post')
-  updateSocialPost(
-    @Param('id', ParseIntPipe) id: number,
-    @Body('platform') platform: string,
-    @Body('post_url') postUrl: string,
-    @Body('platform_post_id') platformPostId?: string,
+  @UseGuards(RolesGuard)
+  @Roles('business')
+  @Patch('social-posts/:socialPostId/verify')
+  verifySocialPost(
+    @Param('socialPostId', ParseIntPipe) socialPostId: number,
+    @CurrentUser() user: RequestUser,
   ) {
-    return this.videosService.updateSocialPost(
-      id,
-      platform,
-      postUrl,
-      platformPostId,
-    );
+    return this.videosService.verifySocialPost(socialPostId, user.id);
   }
 
   @ApiOperation({ summary: 'Test TikTok views via Apify (batch)' })

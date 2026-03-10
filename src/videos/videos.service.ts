@@ -382,10 +382,30 @@ export class VideosService {
 
   async updateSocialPost(
     videoId: number,
+    creatorId: number,
     platform: string,
     postUrl: string,
     platformPostId?: string,
   ) {
+    const approvedStatusId = await this.getVideoStatusId('approved');
+
+    const video = await this.prisma.campaign_videos.findUnique({
+      where: { id: videoId },
+      select: { id: true, creator_id: true, status_id: true },
+    });
+
+    if (!video) {
+      throw new NotFoundException('Video not found');
+    }
+
+    if (video.creator_id !== creatorId) {
+      throw new ForbiddenException('You can only add social posts to your own videos');
+    }
+
+    if (video.status_id !== approvedStatusId) {
+      throw new BadRequestException('You can only add social posts to approved videos');
+    }
+
     await this.prisma.video_social_posts.upsert({
       where: {
         video_id_platform: {
@@ -414,5 +434,36 @@ export class VideosService {
     });
 
     return { message: 'Social post updated successfully' };
+  }
+
+  async verifySocialPost(
+    socialPostId: number,
+    businessId: number,
+  ) {
+    const socialPost = await this.prisma.video_social_posts.findUnique({
+      where: { id: socialPostId },
+      include: {
+        campaign_videos: {
+          select: {
+            campaigns: {
+              select: { business_id: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!socialPost) {
+      throw new NotFoundException('Social post not found');
+    }
+
+    if (socialPost.campaign_videos.campaigns.business_id !== businessId) {
+      throw new ForbiddenException('You can only verify social posts for your own campaigns');
+    }
+
+    return this.prisma.video_social_posts.update({
+      where: { id: socialPostId },
+      data: { is_verified: true },
+    });
   }
 }
