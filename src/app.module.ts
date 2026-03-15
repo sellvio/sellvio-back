@@ -3,6 +3,8 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
+import { AnalyticsModule } from './analytics/analytics.module';
 import { APP_GUARD, APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { AuthModule } from './auth/auth.module';
 import { CampaignsModule } from './campaigns/campaigns.module';
@@ -20,6 +22,8 @@ import { ChatModule } from './chat/chat.module';
 @Module({
   imports: [
     PrismaModule,
+    ScheduleModule.forRoot(),
+    AnalyticsModule,
     ThrottlerModule.forRoot([
       {
         ttl: 60_000,

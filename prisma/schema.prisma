@@ -435,6 +435,10 @@ model video_analytics {
   video_id         Int
   platform         social_platform
   views            Int?            @default(0)
+  likes            Int?            @default(0)
+  comments         Int?            @default(0)
+  shares           Int?            @default(0)
+  play_count       Int?            @default(0)
   clicks           Int?            @default(0)
   engagement_count Int?            @default(0)
   reach            Int?            @default(0)
