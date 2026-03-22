@@ -37,7 +37,10 @@ export class AnalyticsCronService {
   }
 
   private calculateEarnings(
-    metrics: Pick<ProcessedEntry, 'views' | 'clicks' | 'engagement_count' | 'reach'>,
+    metrics: Pick<
+      ProcessedEntry,
+      'views' | 'clicks' | 'engagement_count' | 'reach'
+    >,
     paymentType: payment_type,
     paymentAmount: number,
     paymentPerQuantity: number,
@@ -64,10 +67,12 @@ export class AnalyticsCronService {
   }
 
   private async recalculateCampaignBudget(campaignId: number): Promise<void> {
-    const budgetTracking = await this.prisma.campaign_budget_tracking.findFirst({
-      where: { campaign_id: campaignId },
-      select: { total_budget: true },
-    });
+    const budgetTracking = await this.prisma.campaign_budget_tracking.findFirst(
+      {
+        where: { campaign_id: campaignId },
+        select: { total_budget: true },
+      },
+    );
 
     if (!budgetTracking) return;
 
@@ -98,13 +103,15 @@ export class AnalyticsCronService {
       (sum, r) => sum + Number(r.earnings_amount ?? 0),
       0,
     );
-    const remaining = Math.max(0, Number(budgetTracking.total_budget) - totalSpent);
+    const remaining = Math.max(
+      0,
+      Number(budgetTracking.total_budget) - totalSpent,
+    );
 
     await this.prisma.campaign_budget_tracking.updateMany({
       where: { campaign_id: campaignId },
       data: {
         spent_amount: totalSpent,
-        remaining_budget: remaining,
         last_updated: new Date(),
       },
     });
@@ -141,8 +148,11 @@ export class AnalyticsCronService {
         const video = videoMap.get(entry.videoId);
         if (!video) return null;
 
-        const { payment_type: pType, payment_amount, payment_per_quantity } =
-          video.campaigns;
+        const {
+          payment_type: pType,
+          payment_amount,
+          payment_per_quantity,
+        } = video.campaigns;
 
         const earnings = this.calculateEarnings(
           entry,
@@ -166,14 +176,16 @@ export class AnalyticsCronService {
 
     // Recalculate spent_amount for every affected campaign
     const campaignIds = [...new Set(videos.map((v) => v.campaign_id))];
-    await Promise.all(campaignIds.map((id) => this.recalculateCampaignBudget(id)));
+    await Promise.all(
+      campaignIds.map((id) => this.recalculateCampaignBudget(id)),
+    );
 
     this.logger.log(
       `Earnings calculated for ${processedEntries.length} analytics rows across ${campaignIds.length} campaign(s).`,
     );
   }
 
-  @Cron('0 23 * * *', { timeZone: 'Asia/Tbilisi' })
+  @Cron('20 16 * * *', { timeZone: 'Asia/Tbilisi' })
   async syncVideoAnalytics() {
     this.logger.log('Starting daily video analytics sync...');
 
@@ -365,6 +377,174 @@ export class AnalyticsCronService {
         },
       });
     }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // PROFILE FOLLOWERS SYNC
+  // ─────────────────────────────────────────────────────────────
+
+  // @Cron('10 16 * * *', { timeZone: 'Asia/Tbilisi' })
+  // async syncProfileFollowers() {
+  //   this.logger.log('Starting daily profile followers sync...');
+
+  //   const automationName = 'daily_profile_followers_sync';
+
+  //   await this.prisma.automation_triggers.upsert({
+  //     where: { automation_name: automationName },
+  //     create: {
+  //       automation_name: automationName,
+  //       is_active: true,
+  //       last_triggered_at: new Date(),
+  //       status: 'running',
+  //     },
+  //     update: {
+  //       last_triggered_at: new Date(),
+  //       status: 'running',
+  //       error_log: null,
+  //     },
+  //   });
+
+  //   try {
+  //     const accounts = await this.prisma.social_media_accounts.findMany({
+  //       where: {
+  //         platform: { in: ['instagram', 'tiktok'] },
+  //         OR: [{ username: { not: null } }, { profile_url: { not: null } }],
+  //       },
+  //       select: {
+  //         id: true,
+  //         platform: true,
+  //         username: true,
+  //         profile_url: true,
+  //       },
+  //     });
+
+  //     const instagramAccounts = accounts.filter(
+  //       (a) => a.platform === 'instagram',
+  //     );
+  //     const tiktokAccounts = accounts.filter((a) => a.platform === 'tiktok');
+
+  //     const updates: Promise<any>[] = [];
+
+  //     // ── Instagram ──
+  //     if (instagramAccounts.length > 0) {
+  //       const usernames = instagramAccounts
+  //         .map(
+  //           (a) =>
+  //             a.username ?? this.extractInstagramUsername(a.profile_url ?? ''),
+  //         )
+  //         .filter((u): u is string => !!u);
+
+  //       if (usernames.length > 0) {
+  //         this.logger.log(
+  //           `Fetching Instagram profiles for ${usernames.length} accounts...`,
+  //         );
+
+  //         const results = await this.apify.getInstagramProfilesInfo(usernames);
+  //         const resultMap = new Map(
+  //           results.map((r) => [r.username.toLowerCase(), r.followersCount]),
+  //         );
+
+  //         for (const account of instagramAccounts) {
+  //           const key = (
+  //             account.username ??
+  //             this.extractInstagramUsername(account.profile_url ?? '') ??
+  //             ''
+  //           ).toLowerCase();
+
+  //           const followersCount = resultMap.get(key);
+  //           if (followersCount === undefined) continue;
+  //           console.log(account.username, followersCount);
+  //           updates.push(
+  //             this.prisma.social_media_accounts.update({
+  //               where: { id: account.id },
+  //               data: {
+  //                 followers_count: followersCount,
+  //                 last_synced: new Date(),
+  //               },
+  //             }),
+  //           );
+  //         }
+  //       }
+  //     }
+
+  //     // ── TikTok ──
+  //     if (tiktokAccounts.length > 0) {
+  //       const profileUrls = tiktokAccounts
+  //         .map(
+  //           (a) =>
+  //             a.profile_url ?? this.buildTiktokProfileUrl(a.username ?? ''),
+  //         )
+  //         .filter((u): u is string => !!u);
+
+  //       if (profileUrls.length > 0) {
+  //         this.logger.log(
+  //           `Fetching TikTok profiles for ${profileUrls.length} accounts...`,
+  //         );
+
+  //         const results = await this.apify.getTiktokProfilesInfo(profileUrls);
+  //         const resultMap = new Map(
+  //           results.map((r) => [
+  //             r.username.toLowerCase().replace(/^@/, ''),
+  //             r.followersCount,
+  //           ]),
+  //         );
+
+  //         for (const account of tiktokAccounts) {
+  //           const key = (
+  //             account.username ??
+  //             this.extractTiktokUsername(account.profile_url ?? '') ??
+  //             ''
+  //           )
+  //             .toLowerCase()
+  //             .replace(/^@/, '');
+
+  //           const followersCount = resultMap.get(key);
+  //           if (followersCount === undefined) continue;
+
+  //           updates.push(
+  //             this.prisma.social_media_accounts.update({
+  //               where: { id: account.id },
+  //               data: {
+  //                 followers_count: followersCount,
+  //                 last_synced: new Date(),
+  //               },
+  //             }),
+  //           );
+  //         }
+  //       }
+  //     }
+
+  //     await Promise.all(updates);
+  //     this.logger.log(
+  //       `Profile followers sync complete. Updated ${updates.length} accounts.`,
+  //     );
+
+  //     await this.markDone(automationName);
+  //   } catch (err) {
+  //     const message = err instanceof Error ? err.message : String(err);
+  //     this.logger.error(`Profile followers sync failed: ${message}`);
+
+  //     await this.prisma.automation_triggers.update({
+  //       where: { automation_name: automationName },
+  //       data: { status: 'failed', error_log: message },
+  //     });
+  //   }
+  // }
+
+  private extractInstagramUsername(url: string): string | null {
+    const match = url.match(/instagram\.com\/([^/?#]+)/);
+    return match?.[1] ?? null;
+  }
+
+  private extractTiktokUsername(url: string): string | null {
+    const match = url.match(/tiktok\.com\/@([^/?#]+)/);
+    return match?.[1] ?? null;
+  }
+
+  private buildTiktokProfileUrl(username: string): string | null {
+    if (!username) return null;
+    const clean = username.replace(/^@/, '');
+    return `https://www.tiktok.com/@${clean}`;
   }
 
   private async markDone(automationName: string) {

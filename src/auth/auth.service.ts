@@ -411,6 +411,16 @@ export class AuthService {
                 },
               },
             },
+            social_media_accounts: {
+              select: {
+                platform: true,
+                username: true,
+                profile_url: true,
+                followers_count: true,
+                is_connected: true,
+                last_synced: true,
+              },
+            },
           },
         },
       },
