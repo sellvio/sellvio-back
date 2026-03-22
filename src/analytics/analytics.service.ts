@@ -462,6 +462,10 @@ export class AnalyticsService {
       (sum, c) => sum + Number(c.campaign_budget_tracking[0]?.spent_amount ?? 0),
       0,
     );
+    const totalBudget = campaigns.reduce(
+      (sum, c) => sum + Number(c.campaign_budget_tracking[0]?.total_budget ?? 0),
+      0,
+    );
 
     const platformBreakdown: Record<string, any> = {};
     for (const platform of ['tiktok', 'instagram', 'facebook']) {
@@ -481,6 +485,7 @@ export class AnalyticsService {
         approved: approvedVideos,
       },
       spend: {
+        totalBudget,
         total: totalSpent,
       },
       analytics: {

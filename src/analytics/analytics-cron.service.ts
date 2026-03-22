@@ -1,7 +1,21 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { payment_type } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ApifyHelper } from '../helpers/apify.helper';
+
+interface ProcessedEntry {
+  videoId: number;
+  platform: string;
+  views: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  play_count: number;
+  clicks: number;
+  engagement_count: number;
+  reach: number;
+}
 
 @Injectable()
 export class AnalyticsCronService {
@@ -20,6 +34,143 @@ export class AnalyticsCronService {
   private extractTiktokVideoId(url: string): string | null {
     const match = url?.match(/\/video\/(\d+)/);
     return match?.[1] ?? null;
+  }
+
+  private calculateEarnings(
+    metrics: Pick<ProcessedEntry, 'views' | 'clicks' | 'engagement_count' | 'reach'>,
+    paymentType: payment_type,
+    paymentAmount: number,
+    paymentPerQuantity: number,
+  ): number {
+    if (paymentPerQuantity <= 0) return 0;
+
+    let metric = 0;
+    switch (paymentType) {
+      case payment_type.cost_per_view:
+        metric = metrics.views;
+        break;
+      case payment_type.cost_per_click:
+        metric = metrics.clicks;
+        break;
+      case payment_type.cost_per_engagement:
+        metric = metrics.engagement_count;
+        break;
+      case payment_type.cost_per_reach:
+        metric = metrics.reach;
+        break;
+    }
+
+    return (metric / paymentPerQuantity) * paymentAmount;
+  }
+
+  private async recalculateCampaignBudget(campaignId: number): Promise<void> {
+    const budgetTracking = await this.prisma.campaign_budget_tracking.findFirst({
+      where: { campaign_id: campaignId },
+      select: { total_budget: true },
+    });
+
+    if (!budgetTracking) return;
+
+    // Get all analytics rows for this campaign's videos
+    const allAnalytics = await this.prisma.video_analytics.findMany({
+      where: {
+        campaign_videos: { campaign_id: campaignId },
+      },
+      select: {
+        video_id: true,
+        platform: true,
+        snapshot_date: true,
+        earnings_amount: true,
+      },
+    });
+
+    // Keep only the latest snapshot per (video_id, platform)
+    const latestMap = new Map<string, (typeof allAnalytics)[0]>();
+    for (const row of allAnalytics) {
+      const key = `${row.video_id}:${row.platform}`;
+      const existing = latestMap.get(key);
+      if (!existing || row.snapshot_date > existing.snapshot_date) {
+        latestMap.set(key, row);
+      }
+    }
+
+    const totalSpent = [...latestMap.values()].reduce(
+      (sum, r) => sum + Number(r.earnings_amount ?? 0),
+      0,
+    );
+    const remaining = Math.max(0, Number(budgetTracking.total_budget) - totalSpent);
+
+    await this.prisma.campaign_budget_tracking.updateMany({
+      where: { campaign_id: campaignId },
+      data: {
+        spent_amount: totalSpent,
+        remaining_budget: remaining,
+        last_updated: new Date(),
+      },
+    });
+  }
+
+  private async calculateAndSaveEarnings(
+    processedEntries: ProcessedEntry[],
+    snapshotDate: Date,
+  ): Promise<void> {
+    if (processedEntries.length === 0) return;
+
+    const videoIds = [...new Set(processedEntries.map((e) => e.videoId))];
+
+    const videos = await this.prisma.campaign_videos.findMany({
+      where: { id: { in: videoIds } },
+      select: {
+        id: true,
+        campaign_id: true,
+        campaigns: {
+          select: {
+            payment_type: true,
+            payment_amount: true,
+            payment_per_quantity: true,
+          },
+        },
+      },
+    });
+
+    const videoMap = new Map(videos.map((v) => [v.id, v]));
+
+    // Update earnings_amount on each freshly saved analytics row
+    const earningsUpdates = processedEntries
+      .map((entry) => {
+        const video = videoMap.get(entry.videoId);
+        if (!video) return null;
+
+        const { payment_type: pType, payment_amount, payment_per_quantity } =
+          video.campaigns;
+
+        const earnings = this.calculateEarnings(
+          entry,
+          pType,
+          Number(payment_amount),
+          payment_per_quantity,
+        );
+
+        return this.prisma.video_analytics.updateMany({
+          where: {
+            video_id: entry.videoId,
+            platform: entry.platform as any,
+            snapshot_date: snapshotDate,
+          },
+          data: { earnings_amount: earnings },
+        });
+      })
+      .filter((p): p is NonNullable<typeof p> => p !== null);
+
+    await Promise.all(earningsUpdates);
+
+    // Recalculate spent_amount for every affected campaign
+    const campaignIds = [...new Set(videos.map((v) => v.campaign_id))];
+    await Promise.all(campaignIds.map((id) => this.recalculateCampaignBudget(id)));
+
+    this.logger.log(
+      `Earnings calculated for ${processedEntries.length} analytics rows across ${campaignIds.length} campaign(s).`,
+    );
   }
 
   @Cron('0 23 * * *', { timeZone: 'Asia/Tbilisi' })
@@ -71,6 +222,7 @@ export class AnalyticsCronService {
       );
 
       const upserts: Promise<any>[] = [];
+      const processedEntries: ProcessedEntry[] = [];
 
       // ── TikTok ──
       if (tiktokPosts.length > 0) {
@@ -98,6 +250,19 @@ export class AnalyticsCronService {
             shares: result.shares ?? 0,
             synced_at: new Date(),
           };
+
+          processedEntries.push({
+            videoId: match.video_id,
+            platform: 'tiktok',
+            views: data.views,
+            likes: data.likes,
+            comments: data.comments,
+            shares: data.shares,
+            play_count: 0,
+            clicks: 0,
+            engagement_count: 0,
+            reach: 0,
+          });
 
           upserts.push(
             this.prisma.video_analytics.upsert({
@@ -146,6 +311,19 @@ export class AnalyticsCronService {
             synced_at: new Date(),
           };
 
+          processedEntries.push({
+            videoId: match.video_id,
+            platform: 'instagram',
+            views: data.views,
+            likes: data.likes,
+            comments: data.comments,
+            shares: 0,
+            play_count: data.play_count,
+            clicks: 0,
+            engagement_count: 0,
+            reach: 0,
+          });
+
           upserts.push(
             this.prisma.video_analytics.upsert({
               where: {
@@ -171,6 +349,8 @@ export class AnalyticsCronService {
       this.logger.log(
         `Analytics sync complete. Saved ${upserts.length} records.`,
       );
+
+      await this.calculateAndSaveEarnings(processedEntries, snapshotDate);
 
       await this.markDone(automationName);
     } catch (err) {
