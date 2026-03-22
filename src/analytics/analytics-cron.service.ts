@@ -185,7 +185,7 @@ export class AnalyticsCronService {
     );
   }
 
-  @Cron('20 16 * * *', { timeZone: 'Asia/Tbilisi' })
+  @Cron('0 23 * * *', { timeZone: 'Asia/Tbilisi' })
   async syncVideoAnalytics() {
     this.logger.log('Starting daily video analytics sync...');
 
@@ -383,153 +383,153 @@ export class AnalyticsCronService {
   // PROFILE FOLLOWERS SYNC
   // ─────────────────────────────────────────────────────────────
 
-  // @Cron('10 16 * * *', { timeZone: 'Asia/Tbilisi' })
-  // async syncProfileFollowers() {
-  //   this.logger.log('Starting daily profile followers sync...');
+  @Cron('0 23 * * *', { timeZone: 'Asia/Tbilisi' })
+  async syncProfileFollowers() {
+    this.logger.log('Starting daily profile followers sync...');
 
-  //   const automationName = 'daily_profile_followers_sync';
+    const automationName = 'daily_profile_followers_sync';
 
-  //   await this.prisma.automation_triggers.upsert({
-  //     where: { automation_name: automationName },
-  //     create: {
-  //       automation_name: automationName,
-  //       is_active: true,
-  //       last_triggered_at: new Date(),
-  //       status: 'running',
-  //     },
-  //     update: {
-  //       last_triggered_at: new Date(),
-  //       status: 'running',
-  //       error_log: null,
-  //     },
-  //   });
+    await this.prisma.automation_triggers.upsert({
+      where: { automation_name: automationName },
+      create: {
+        automation_name: automationName,
+        is_active: true,
+        last_triggered_at: new Date(),
+        status: 'running',
+      },
+      update: {
+        last_triggered_at: new Date(),
+        status: 'running',
+        error_log: null,
+      },
+    });
 
-  //   try {
-  //     const accounts = await this.prisma.social_media_accounts.findMany({
-  //       where: {
-  //         platform: { in: ['instagram', 'tiktok'] },
-  //         OR: [{ username: { not: null } }, { profile_url: { not: null } }],
-  //       },
-  //       select: {
-  //         id: true,
-  //         platform: true,
-  //         username: true,
-  //         profile_url: true,
-  //       },
-  //     });
+    try {
+      const accounts = await this.prisma.social_media_accounts.findMany({
+        where: {
+          platform: { in: ['instagram', 'tiktok'] },
+          OR: [{ username: { not: null } }, { profile_url: { not: null } }],
+        },
+        select: {
+          id: true,
+          platform: true,
+          username: true,
+          profile_url: true,
+        },
+      });
 
-  //     const instagramAccounts = accounts.filter(
-  //       (a) => a.platform === 'instagram',
-  //     );
-  //     const tiktokAccounts = accounts.filter((a) => a.platform === 'tiktok');
+      const instagramAccounts = accounts.filter(
+        (a) => a.platform === 'instagram',
+      );
+      const tiktokAccounts = accounts.filter((a) => a.platform === 'tiktok');
 
-  //     const updates: Promise<any>[] = [];
+      const updates: Promise<any>[] = [];
 
-  //     // ── Instagram ──
-  //     if (instagramAccounts.length > 0) {
-  //       const usernames = instagramAccounts
-  //         .map(
-  //           (a) =>
-  //             a.username ?? this.extractInstagramUsername(a.profile_url ?? ''),
-  //         )
-  //         .filter((u): u is string => !!u);
+      // ── Instagram ──
+      if (instagramAccounts.length > 0) {
+        const usernames = instagramAccounts
+          .map(
+            (a) =>
+              a.username ?? this.extractInstagramUsername(a.profile_url ?? ''),
+          )
+          .filter((u): u is string => !!u);
 
-  //       if (usernames.length > 0) {
-  //         this.logger.log(
-  //           `Fetching Instagram profiles for ${usernames.length} accounts...`,
-  //         );
+        if (usernames.length > 0) {
+          this.logger.log(
+            `Fetching Instagram profiles for ${usernames.length} accounts...`,
+          );
 
-  //         const results = await this.apify.getInstagramProfilesInfo(usernames);
-  //         const resultMap = new Map(
-  //           results.map((r) => [r.username.toLowerCase(), r.followersCount]),
-  //         );
+          const results = await this.apify.getInstagramProfilesInfo(usernames);
+          const resultMap = new Map(
+            results.map((r) => [r.username.toLowerCase(), r.followersCount]),
+          );
 
-  //         for (const account of instagramAccounts) {
-  //           const key = (
-  //             account.username ??
-  //             this.extractInstagramUsername(account.profile_url ?? '') ??
-  //             ''
-  //           ).toLowerCase();
+          for (const account of instagramAccounts) {
+            const key = (
+              account.username ??
+              this.extractInstagramUsername(account.profile_url ?? '') ??
+              ''
+            ).toLowerCase();
 
-  //           const followersCount = resultMap.get(key);
-  //           if (followersCount === undefined) continue;
-  //           console.log(account.username, followersCount);
-  //           updates.push(
-  //             this.prisma.social_media_accounts.update({
-  //               where: { id: account.id },
-  //               data: {
-  //                 followers_count: followersCount,
-  //                 last_synced: new Date(),
-  //               },
-  //             }),
-  //           );
-  //         }
-  //       }
-  //     }
+            const followersCount = resultMap.get(key);
+            if (followersCount === undefined) continue;
+            console.log(account.username, followersCount);
+            updates.push(
+              this.prisma.social_media_accounts.update({
+                where: { id: account.id },
+                data: {
+                  followers_count: followersCount,
+                  last_synced: new Date(),
+                },
+              }),
+            );
+          }
+        }
+      }
 
-  //     // ── TikTok ──
-  //     if (tiktokAccounts.length > 0) {
-  //       const profileUrls = tiktokAccounts
-  //         .map(
-  //           (a) =>
-  //             a.profile_url ?? this.buildTiktokProfileUrl(a.username ?? ''),
-  //         )
-  //         .filter((u): u is string => !!u);
+      // ── TikTok ──
+      if (tiktokAccounts.length > 0) {
+        const profileUrls = tiktokAccounts
+          .map(
+            (a) =>
+              a.profile_url ?? this.buildTiktokProfileUrl(a.username ?? ''),
+          )
+          .filter((u): u is string => !!u);
 
-  //       if (profileUrls.length > 0) {
-  //         this.logger.log(
-  //           `Fetching TikTok profiles for ${profileUrls.length} accounts...`,
-  //         );
+        if (profileUrls.length > 0) {
+          this.logger.log(
+            `Fetching TikTok profiles for ${profileUrls.length} accounts...`,
+          );
 
-  //         const results = await this.apify.getTiktokProfilesInfo(profileUrls);
-  //         const resultMap = new Map(
-  //           results.map((r) => [
-  //             r.username.toLowerCase().replace(/^@/, ''),
-  //             r.followersCount,
-  //           ]),
-  //         );
+          const results = await this.apify.getTiktokProfilesInfo(profileUrls);
+          const resultMap = new Map(
+            results.map((r) => [
+              r.username.toLowerCase().replace(/^@/, ''),
+              r.followersCount,
+            ]),
+          );
 
-  //         for (const account of tiktokAccounts) {
-  //           const key = (
-  //             account.username ??
-  //             this.extractTiktokUsername(account.profile_url ?? '') ??
-  //             ''
-  //           )
-  //             .toLowerCase()
-  //             .replace(/^@/, '');
+          for (const account of tiktokAccounts) {
+            const key = (
+              account.username ??
+              this.extractTiktokUsername(account.profile_url ?? '') ??
+              ''
+            )
+              .toLowerCase()
+              .replace(/^@/, '');
 
-  //           const followersCount = resultMap.get(key);
-  //           if (followersCount === undefined) continue;
+            const followersCount = resultMap.get(key);
+            if (followersCount === undefined) continue;
 
-  //           updates.push(
-  //             this.prisma.social_media_accounts.update({
-  //               where: { id: account.id },
-  //               data: {
-  //                 followers_count: followersCount,
-  //                 last_synced: new Date(),
-  //               },
-  //             }),
-  //           );
-  //         }
-  //       }
-  //     }
+            updates.push(
+              this.prisma.social_media_accounts.update({
+                where: { id: account.id },
+                data: {
+                  followers_count: followersCount,
+                  last_synced: new Date(),
+                },
+              }),
+            );
+          }
+        }
+      }
 
-  //     await Promise.all(updates);
-  //     this.logger.log(
-  //       `Profile followers sync complete. Updated ${updates.length} accounts.`,
-  //     );
+      await Promise.all(updates);
+      this.logger.log(
+        `Profile followers sync complete. Updated ${updates.length} accounts.`,
+      );
 
-  //     await this.markDone(automationName);
-  //   } catch (err) {
-  //     const message = err instanceof Error ? err.message : String(err);
-  //     this.logger.error(`Profile followers sync failed: ${message}`);
+      await this.markDone(automationName);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Profile followers sync failed: ${message}`);
 
-  //     await this.prisma.automation_triggers.update({
-  //       where: { automation_name: automationName },
-  //       data: { status: 'failed', error_log: message },
-  //     });
-  //   }
-  // }
+      await this.prisma.automation_triggers.update({
+        where: { automation_name: automationName },
+        data: { status: 'failed', error_log: message },
+      });
+    }
+  }
 
   private extractInstagramUsername(url: string): string | null {
     const match = url.match(/instagram\.com\/([^/?#]+)/);
